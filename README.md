@@ -1,88 +1,79 @@
-# Calz: AI Calorie & Wellness Tracker
+# 🥗 Calz - AI Calorie & Wellness Tracker
 
-A high-fidelity mobile application built with **Expo (React Native)**, **Google Gemini 2.0 Flash**, and **Firebase**. This app demonstrates how to combine multimodal AI with real-time cloud persistence and device hardware sensors to create a modern health experience.
-
----
-
-## 🚀 Features
-
-### 1. AI-Powered Food Analysis
-- **Multimodal AI**: Snap a photo of your meal, and **Gemini 2.0 Flash** analyzes the image to estimate calories and macros (Protein, Carbs, Fats) instantly.
-- **Smart Logic**: Supports voice/text descriptions as an alternative to photos.
-
-### 2. Wellness Module (Spec-Driven)
-- **Real Step Tracking**: Integrates with the device's **Pedometer** (`expo-sensors`) for real-time daily movement tracking.
-- **AI Activity Tracker**: Describe your exercise (e.g., *"45 min cycling"*) and Gemini estimates the caloric burn.
-- **Interactive Carousel**: Horizontal scroll of health tips with detailed **Did You Know?** facts and motivational content.
-- **Water Tracker**: Cloud-synced water intake tracker with a custom scroll-picker UI.
-
-### 3. Smart Fasting & Weight Tracking
-- **Persistent Fasting**: A live fasting timer that stays running even if the app is closed.
-- **Weight Progress**: Interactive line charts showing weight history and goal progress.
-
-### 4. Real-time Cloud Storage
-- **Firebase Firestore**: All data (Meals, Water, Activities, Weight, Fasting) is synced to the cloud in real-time.
-- **Cross-Session Persistence**: Your data survives app restarts and device reboots.
+A modern, high-fidelity mobile application that uses **Google Gemini 2.0 Flash (Multimodal AI)** to analyze food images and activity text in real-time. Built with **React Native (Expo)** and **Firebase**, it features a wellness dashboard for tracking hydration, steps (via hardware sensors), and weight goals.
 
 ---
 
-## 🛠️ Technical Stack
+## 🚀 Tech Stack
 
-- **Framework**: Expo (React Native)
-- **AI**: Google Gemini 2.0 Flash (via `v1beta` API)
-- **Database**: Firebase Firestore
-- **Sensors**: Expo Pedometer (Hardware motion tracking)
-- **UI**: Lucide Icons, React Native Chart Kit, Custom Pastel Light Mode Design
+- **AI & ML:** Google Gemini 2.0 Flash (via `v1beta` API) for multimodal analysis (Image & Text).
+- **Frontend:** React Native (Expo SDK 52) with TypeScript.
+- **Backend / Persistence:** Firebase Firestore (NoSQL Real-time Database).
+- **Hardware Integration:** `expo-sensors` (Pedometer), `expo-camera` (Image Capture).
+- **UI/UX:** Custom "Light Mode" design system with rounded cards, pastel accents, and haptic feedback.
 
 ---
 
-## 📖 Setup Guide for Learners
+## 🛠️ Installation & Setup
 
-### 1. Prerequisites
-- Node.js installed
-- Expo Go app on your phone (for testing hardware sensors like Pedometer)
+### 1. Clone the Repository
+```bash
+git clone https://github.com/YourUsername/calz-tracker.git
+cd calorie-tracker-mobile
+```
 
-### 2. Environment Configuration
-Create a `.env` file in the root directory and add your keys (keep these secret in production!):
+### 2. Install Dependencies
+```bash
+npm install
+# or
+yarn install
+```
 
+### 3. Environment Configuration
+Create a `.env` file in the root directory. You will need a Google Gemini API Key and Firebase Configuration.
 ```env
-GEMINI_API_KEY=your_gemini_key
-NEXT_PUBLIC_FIREBASE_API_KEY=your_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_domain
+# AI Service
+GEMINI_API_KEY=your_google_ai_key_here
+
+# Firebase Configuration
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_bucket
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-### 3. Installation & Run
+### 4. Run the App
+Start the Expo development server.
 ```bash
-npm install
 npx expo start -c
 ```
+*Note: The `-c` flag clears the cache, ensuring environment variables are loaded correctly.*
 
 ---
 
-## 🛡️ Important Note on Keys
-The keys are currently managed via `FORCED_GEMINI_KEY` inside `App.tsx` to bypass local environment caching issues. For a real production app, ensure these are moved entirely to secure environment variables.
+## 🏗️ Architecture: How It Works
+
+### The "Magic" of Multimodal Analysis
+Instead of training a custom ML model, Calz acts as a structured client for Google's Gemini 2.0 Flash model.
+
+1.  **Image Capture:** The user snaps a photo using `expo-camera`.
+2.  **Preprocessing:** The app converts the image to a Base64 string.
+3.  **Prompt Engineering:** We send a strict system prompt to the AI:
+    > "Analyze this image. Return ONLY raw JSON with keys: `food_name`, `calories`, and `macros` ({protein, carbs, fat})."
+4.  **Response Parsing:** The app receives the JSON string, parses it, and immediately hydrates the UI state.
+5.  **Persistence:** The verified data is written to a `meals` collection in Firestore, triggering a real-time update on all connected devices.
 
 ---
 
-## 📸 Screenshots
+## 📱 How to Use
 
-### 1. Home Dashboard (AI Calorie Tracking)
-![Home Dashboard](./assets/home_ui.png)
-
-### 2. Wellness Module (Spec-Driven UI)
-![Wellness Dashboard](./assets/wellness_ui.png)
-
-### 3. Smart Fasting Tracker
-![Fasting Dashboard](./assets/fasting_ui.png)
-
-### 4. Weight Progress & Analytics
-![Weight Dashboard](./assets/weight_ui.png)
+1.  **Scan a Meal:** Tap the **"+"** button on the Home tab. Select "Photo" mode and snap a picture of your food. The AI will auto-fill the nutrition data.
+2.  **Track Wellness:** Switch to the **Wellness** tab to log water intake or view your real-time step count (synced with your device's pedometer).
+3.  **Monitor Progress:** Use the **Weight** tab to log your weight and view your progress against your goal on the interactive chart.
 
 ---
 
-**Developed with ❤️ for health enthusiasts.**
-
+## 📄 License
+This project is open-source and available under the MIT License.

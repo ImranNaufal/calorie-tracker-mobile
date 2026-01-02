@@ -15,7 +15,7 @@ import { Plus, Activity, Zap, Droplets, Camera, Flame, Home, User, ScanLine, Che
 // ==========================================
 // 🔑 CONFIGURATION: FORCED KEY
 // ==========================================
-const FORCED_GEMINI_KEY = "AIzaSyBCJwnhvTqaB2IuAD6ziXb_wGH27Zdryvs"; 
+const FORCED_GEMINI_KEY = "AIzaSyD-LR7FFnuRXShT8YFuiPpD7aUn6DnOy_I"; 
 // ==========================================
 
 import { GEMINI_API_KEY as ENV_KEY } from '@env';
@@ -735,7 +735,7 @@ export default function App() {
 
                 <View style={{marginTop: 20}}><Text style={styles.goalLabel}>{goalProgress}% GOAL REACHED</Text>
 
-                  <View style={styles.progressBarBg}><View style={[styles.progressBarFill, {width: `${goalProgress}%`}]} /></View>
+                  <View style={styles.progressBarBg}><View style={[styles.progressBarFill, {width: `${goalProgress}%` as any}]} /></View>
 
                   <View style={styles.progressLabels}><Text style={styles.progressLimit}>{initialWeight} kg</Text><ArrowRight size={14} color="#fff" /><Text style={styles.progressLimit}>{weightGoal} kg</Text></View>
 
@@ -966,7 +966,7 @@ export default function App() {
                 renderItem={(data) => (
                   <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
                 )}
-                onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+                onValueChange={(data) => setSelWeightWhole(parseInt(data || '30'))}
                 wrapperHeight={200}
                 itemHeight={60}
                 wrapperBackground="#fff"
@@ -979,9 +979,9 @@ export default function App() {
                 dataSource={weightFractionList}
                 selectedIndex={selWeightFraction}
                 renderItem={(data) => (
-                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data || '0') && styles.wheelTextActive]}>{data}</Text>
                 )}
-                onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+                onValueChange={(data) => setSelWeightFraction(parseInt(data || '0'))}
                 wrapperHeight={200}
                 itemHeight={60}
                 wrapperBackground="#fff"
@@ -1063,9 +1063,9 @@ export default function App() {
     
                       selectedIndex={selWeightWhole - 30}
     
-                      renderItem={(data) => <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>}
+                      renderItem={(data) => <Text style={[styles.wheelText, selWeightWhole === parseInt(data || '30') && styles.wheelTextActive]}>{data}</Text>}
     
-                      onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+                      onValueChange={(data) => setSelWeightWhole(parseInt(data || '30'))}
     
                       wrapperHeight={200} itemHeight={60} wrapperBackground="#fff" highlightColor="transparent"
     
@@ -1083,9 +1083,9 @@ export default function App() {
     
                       selectedIndex={selWeightFraction}
     
-                      renderItem={(data) => <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>}
+                      renderItem={(data) => <Text style={[styles.wheelText, selWeightFraction === parseInt(data || '0') && styles.wheelTextActive]}>{data}</Text>}
     
-                      onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+                      onValueChange={(data) => setSelWeightFraction(parseInt(data || '0'))}
     
                       wrapperHeight={200} itemHeight={60} wrapperBackground="#fff" highlightColor="transparent"
     
@@ -1186,7 +1186,7 @@ export default function App() {
                 renderItem={(data) => (
                   <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
                 )}
-                onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+                onValueChange={(data) => setSelWeightWhole(parseInt(data || '30'))}
                 wrapperHeight={200}
                 itemHeight={60}
                 wrapperBackground="#fff"
@@ -1199,9 +1199,9 @@ export default function App() {
                 dataSource={weightFractionList}
                 selectedIndex={selWeightFraction}
                 renderItem={(data) => (
-                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data || '0') && styles.wheelTextActive]}>{data}</Text>
                 )}
-                onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+                onValueChange={(data) => setSelWeightFraction(parseInt(data || '0'))}
                 wrapperHeight={200}
                 itemHeight={60}
                 wrapperBackground="#fff"
@@ -1404,7 +1404,7 @@ export default function App() {
               <ScrollPicker
                 dataSource={Array.from({ length: 20 }, (_, i) => (i + 1) * 50)}
                 selectedIndex={4}
-                onValueChange={(data) => setSelWaterVolume(data)}
+                onValueChange={(data) => setSelWaterVolume(data || 250)}
                 wrapperHeight={150}
                 itemHeight={50}
                 highlightColor="transparent"
@@ -1520,7 +1520,7 @@ export default function App() {
               <ScrollPicker
                 dataSource={Array.from({ length: 4 }, (_, i) => i)}
                 selectedIndex={selDurationHour}
-                onValueChange={(data) => setSelDurationHour(data)}
+                onValueChange={(data) => setSelDurationHour(data || 0)}
                 wrapperHeight={150}
                 itemHeight={50}
                 highlightColor="transparent"
@@ -1532,7 +1532,7 @@ export default function App() {
               <ScrollPicker
                 dataSource={Array.from({ length: 12 }, (_, i) => i * 5)}
                 selectedIndex={6}
-                onValueChange={(data) => setSelDurationMin(data)}
+                onValueChange={(data) => setSelDurationMin(data || 30)}
                 wrapperHeight={150}
                 itemHeight={50}
                 highlightColor="transparent"
@@ -1689,6 +1689,9 @@ const styles = StyleSheet.create({
   headerSubtitle: { fontSize: 14, color: '#71717a' },
   calendarStrip: { height: 80, borderBottomWidth: 1, borderBottomColor: '#f4f4f5', marginBottom: 20 },
   calendarItem: { width: 50, alignItems: 'center', justifyContent: 'center', marginHorizontal: 4 },
+  calDay: { color: '#a1a1aa', fontSize: 10, fontWeight: 'bold', marginBottom: 2 },
+  calDate: { color: '#18181b', fontSize: 18, fontWeight: 'bold', marginBottom: 2 },
+  calSub: { fontSize: 8, color: '#d4d4d8', fontWeight: 'bold' },
   calendarActive: { backgroundColor: '#18181b', borderRadius: 16, height: 60, marginTop: 10 },
   calDayActive: { color: '#fff', fontSize: 10, fontWeight: 'bold', marginBottom: 2 },
   calDateActive: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 2 },
@@ -1714,6 +1717,7 @@ const styles = StyleSheet.create({
   mealImg: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#f4f4f5' },
   mealContent: { flex: 1, marginLeft: 12 },
   mealName: { fontSize: 16, fontWeight: '700', color: '#18181b', marginBottom: 4 },
+  macroTagRow: { flexDirection: 'row', marginTop: 8 },
   macroText: { fontSize: 12, color: '#71717a', fontWeight: '500' },
   macroIndicatorRow: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
   smallMacroBar: { width: 3, height: 12, borderRadius: 2, marginRight: 4 },
@@ -1809,12 +1813,6 @@ const styles = StyleSheet.create({
   inputBox: { width: 80, height: 40, backgroundColor: '#f4f4f5', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   macroInputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f4f4f5', paddingBottom: 12 },
   continueBtn: { backgroundColor: '#f4f4f5', margin: 24, marginBottom: 100, padding: 16, borderRadius: 16, alignItems: 'center' },
-  camLogoText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  camBottom: { paddingBottom: 50, alignItems: 'center' },
-  shutterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', width: '100%', paddingHorizontal: 40 },
-  galleryBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' },
-  shutterOuter: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
-  shutterInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff' },
   manualHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
   describeContainer: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: 50, padding: 20 },
   manualContainer: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: 50 },
