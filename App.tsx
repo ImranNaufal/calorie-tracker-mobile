@@ -84,7 +84,7 @@ export default function App() {
   const [weightHistory, setWeightHistory] = useState([{ id: '1', weight: 75, date: '01 Jan', change: '' }]);
   const [weightUnit, setWeightUnit] = useState('Days');
 
-  // Appearance / Character
+  // Character / Common
   const [selectedChar, setSelectedChar] = useState('quacky');
   const [scanMode, setScanMode] = useState<'describe' | 'photo' | 'manual'>('photo');
   const [userProfile, setUserProfile] = useState({ calories: 2155, protein: 180, weight: 75, height: 180 });
@@ -99,7 +99,7 @@ export default function App() {
   const fabAnim = useRef(new Animated.Value(1)).current;
   const waveAnim = useRef(new Animated.Value(0)).current;
 
-  // --- DYNAMIC CALCULATIONS ---
+  // --- DYNAMIC DATA ---
   const calendarDays = getCalendarDays();
   const currentDayLabel = calendarDays.find(d => d.isToday)?.fullLabel || 'THU 1';
   const [selectedDate, setSelectedDate] = useState(currentDayLabel);
@@ -119,9 +119,7 @@ export default function App() {
   const plan = getPlanHours(selectedPlan);
 
   // --- EFFECTS ---
-  useEffect(() => {
-    startBreathing(); startBlinking(); startFabBounce(); startWaving();
-  }, []);
+  useEffect(() => { startBreathing(); startBlinking(); startFabBounce(); startWaving(); }, []);
 
   const startFabBounce = () => { Animated.loop(Animated.sequence([Animated.delay(2500), Animated.timing(fabAnim, { toValue: 1.1, duration: 200, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1, duration: 200, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1.05, duration: 150, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1, duration: 150, useNativeDriver: true })])).start(); };
   const startBreathing = () => { Animated.loop(Animated.sequence([Animated.timing(floatAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }), Animated.timing(floatAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true })])).start(); };
@@ -158,7 +156,7 @@ export default function App() {
   const pickFromGallery = async () => { setShowCamera(false); try { let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", allowsEditing: true, quality: 0.5 } as any); if (!result.canceled) analyzeFood({ uri: result.assets[0].uri }); } catch (error) { console.error("Error picking image:", error); } };
   const submitDescription = () => { if (!describeText.trim()) return; setShowCamera(false); analyzeFood({ text: describeText }); setDescribeText(''); };
   const submitManual = () => { const cals = parseInt(manualData.calories)||0; if(cals===0) return; setShowCamera(false); const newMeal: Meal = { id: Date.now().toString(), name: manualData.name.trim() || "Manual Entry", calories: cals, macros: { protein: parseInt(manualData.protein)||0, carbs: parseInt(manualData.carbs)||0, fat: parseInt(manualData.fat)||0 }, image: 'https://via.placeholder.com/100', dateLabel: currentDayLabel }; setMeals(prev => [newMeal, ...prev]); Vibration.vibrate(50); setManualData({calories:'', protein:'', carbs:'', fat:'', name: ''}); };
-
+  
   const analyzeFood = async (input: { uri?: string, text?: string }) => {
     setLoading(true); setActiveTab('home'); setSelectedDate(currentDayLabel);
     try {
@@ -171,14 +169,14 @@ export default function App() {
       const data = JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
       const newMeal: Meal = { id: Date.now().toString(), name: data.food_name, calories: data.calories, macros: data.macros, image: input.uri || 'https://via.placeholder.com/100', dateLabel: currentDayLabel };
       setMeals(prev => [newMeal, ...prev]); Vibration.vibrate(50);
-    } catch (e) { Alert.alert("AI Error", "Failed to connect to Google AI."); } finally { setLoading(false); }
+    } catch (e) { Alert.alert("AI Error", "Failed to analyze food."); } finally { setLoading(false); }
   };
 
   const openEdit = (meal: Meal) => { setEditingMeal({...meal}); setShowEdit(true); };
   const saveEdit = () => { if (!editingMeal) return; setMeals(prev => prev.map(m => m.id === editingMeal.id ? editingMeal : m)); setShowEdit(false); Vibration.vibrate(20); };
   const deleteMeal = () => { if (!editingMeal) return; setMeals(prev => prev.filter(m => m.id !== editingMeal.id)); setShowEdit(false); Vibration.vibrate(50); };
 
-  // --- RENDERS ---
+  // --- RENDER HELPERS ---
   const floatY = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
   const scaleBird = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
   const waveTranslate = waveAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 5] });
@@ -195,10 +193,118 @@ export default function App() {
 
   const renderAddMealModal = () => (
     <View style={styles.cameraContainer}>
-      {scanMode === 'photo' && (<>{permission?.granted && <CameraView style={StyleSheet.absoluteFill} ref={cameraRef} facing="back" />}<SafeAreaView style={styles.cameraHeader}><TouchableOpacity style={styles.camIconBtn}><Info size={24} color="#fff" /></TouchableOpacity><View style={{flexDirection:'row', alignItems:'center'}}><Apple size={20} color="#fff" fill="#fff" style={{marginRight:8}} /><Text style={styles.camLogoText}>Calz</Text></View><TouchableOpacity style={styles.camIconBtn} onPress={() => setShowCamera(false)}><X size={24} color="#fff" /></TouchableOpacity></SafeAreaView><View style={styles.viewfinder}><View style={[styles.bracket, styles.bracketTL]} /><View style={[styles.bracket, styles.bracketTR]} /><View style={[styles.bracket, styles.bracketBL]} /><View style={[styles.bracket, styles.bracketBR]} /></View><View style={styles.camBottom}><View style={styles.shutterRow}><TouchableOpacity style={styles.galleryBtn} onPress={pickFromGallery}><ImageIcon size={24} color="#fff" /></TouchableOpacity><TouchableOpacity style={styles.shutterOuter} onPress={takePicture}><View style={styles.shutterInner} /></TouchableOpacity><View style={{width: 50}} /></View></View></>)}
-      {scanMode === 'describe' && (<View style={styles.describeContainer}><View style={styles.describeHeader}><X size={24} color="#000" onPress={() => setShowCamera(false)} /></View><TextInput style={styles.describeInput} placeholder="Describe..." value={describeText} onChangeText={setDescribeText} multiline /><TouchableOpacity style={styles.micButton} onPress={submitDescription}><Mic size={40} color="#000" /></TouchableOpacity></View>)}
-      {scanMode === 'manual' && (<View style={styles.manualContainer}><View style={styles.manualHeader}><TextInput style={styles.manualTitleInput} placeholder="Food name..." value={manualData.name} onChangeText={(t) => setManualData({...manualData, name: t})} /><X size={24} color="#000" onPress={() => setShowCamera(false)} /></View></View>)}
-      <View style={styles.modeSwitcherContainer}><View style={styles.modeSwitcher}><TouchableOpacity onPress={() => setScanMode('describe')}><Text style={{color:'#fff', fontWeight:'600'}}>DESCRIBE</Text></TouchableOpacity><TouchableOpacity onPress={() => setScanMode('photo')}><Text style={{color:'#fff', fontWeight:'600'}}>PHOTO</Text></TouchableOpacity><TouchableOpacity onPress={() => setScanMode('manual')}><Text style={{color:'#fff', fontWeight:'600'}}>MANUAL</Text></TouchableOpacity></View></View>
+      {scanMode === 'photo' && (
+        <>
+          {permission?.granted && <CameraView style={StyleSheet.absoluteFill} ref={cameraRef} facing="back" />}
+          <SafeAreaView style={styles.cameraHeader}>
+            <TouchableOpacity style={styles.camIconBtn}><Info size={24} color="#fff" /></TouchableOpacity>
+            <View style={{flexDirection:'row', alignItems:'center'}}><Apple size={20} color="#fff" fill="#fff" style={{marginRight:8}} /><Text style={styles.camLogoText}>Calz</Text></View>
+            <TouchableOpacity style={styles.camIconBtn} onPress={() => setShowCamera(false)}><X size={24} color="#fff" /></TouchableOpacity>
+          </SafeAreaView>
+          <View style={styles.viewfinder}>
+            <View style={[styles.bracket, styles.bracketTL]} /><View style={[styles.bracket, styles.bracketTR]} />
+            <View style={[styles.bracket, styles.bracketBL]} /><View style={[styles.bracket, styles.bracketBR]} />
+          </View>
+          <View style={styles.camBottom}>
+            <View style={styles.shutterRow}>
+              <TouchableOpacity style={styles.galleryBtn} onPress={pickFromGallery}><ImageIcon size={24} color="#fff" /></TouchableOpacity>
+              <TouchableOpacity style={styles.shutterOuter} onPress={takePicture}><View style={styles.shutterInner} /></TouchableOpacity>
+              <View style={{width: 50}} />
+            </View>
+          </View>
+        </>
+      )}
+
+      {scanMode === 'describe' && (
+        <View style={styles.describeContainer}>
+          <View style={styles.describeHeader}>
+            <View style={{width:24}} />
+            <TouchableOpacity onPress={() => setShowCamera(false)}><X size={24} color="#000" /></TouchableOpacity>
+          </View>
+          <View style={{alignItems:'center', marginTop:20, paddingHorizontal: 20}}>
+            <Text style={styles.describeLabel}>DESCRIBE YOUR MEAL — BY VOICE OR TEXT</Text>
+            <TextInput 
+              style={styles.describeInput} 
+              placeholder="e.g 2 shrimp tacos..." 
+              placeholderTextColor="#d4d4d8" 
+              value={describeText} 
+              onChangeText={setDescribeText} 
+              onSubmitEditing={submitDescription} 
+              returnKeyType="go" 
+              multiline 
+            />
+            <Text style={styles.describeHint}>Tap to type</Text>
+          </View>
+          <View style={{flex:1, justifyContent:'center', alignItems:'center'}}>
+            <TouchableOpacity 
+              style={[styles.micButton, describeText.length > 0 && {backgroundColor: '#000'}]} 
+              onPress={submitDescription}
+              disabled={!describeText.trim()}
+            >
+              {describeText.length > 0 ? <ChevronRight size={40} color="#fff" /> : <Mic size={40} color="#000" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {scanMode === 'manual' && (
+        <View style={styles.manualContainer}>
+          <View style={styles.manualHeader}>
+            <TextInput 
+              style={styles.manualTitleInput} 
+              placeholder="Enter food name..." 
+              placeholderTextColor="#d4d4d8" 
+              value={manualData.name} 
+              onChangeText={(t) => setManualData({...manualData, name: t})} 
+            />
+            <TouchableOpacity onPress={() => setShowCamera(false)}><X size={24} color="#000" /></TouchableOpacity>
+          </View>
+          <ScrollView style={{flex:1}}>
+            <View style={styles.formSection}>
+              <Text style={styles.formLabel}>Calories</Text>
+              <View style={styles.inputRowFull}>
+                <TextInput 
+                  style={styles.textInput} 
+                  placeholder="0" 
+                  keyboardType="numeric" 
+                  value={manualData.calories} 
+                  onChangeText={(t) => setManualData({...manualData, calories: t})} 
+                />
+              </View>
+            </View>
+            <View style={styles.formSection}>
+              <Text style={styles.sectionHeaderTitle}>Macronutrients</Text>
+              <View style={styles.macroInputRow}>
+                <View style={{flexDirection:'row', alignItems:'center', gap:8}}><Wheat size={20} color="#fbbf24" /><Text style={styles.inputLabel}>Carbs</Text></View>
+                <View style={styles.inputBox}><TextInput style={styles.textInputSmall} placeholder="0" keyboardType="numeric" value={manualData.carbs} onChangeText={(t) => setManualData({...manualData, carbs: t})} /></View>
+              </View>
+              <View style={styles.macroInputRow}>
+                <View style={{flexDirection:'row', alignItems:'center', gap:8}}><Beef size={20} color="#f472b6" /><Text style={styles.inputLabel}>Protein</Text></View>
+                <View style={styles.inputBox}><TextInput style={styles.textInputSmall} placeholder="0" keyboardType="numeric" value={manualData.protein} onChangeText={(t) => setManualData({...manualData, protein: t})} /></View>
+              </View>
+              <View style={styles.macroInputRow}>
+                <View style={{flexDirection:'row', alignItems:'center', gap:8}}><Droplets size={20} color="#34d399" /><Text style={styles.inputLabel}>Fat</Text></View>
+                <View style={styles.inputBox}><TextInput style={styles.textInputSmall} placeholder="0" keyboardType="numeric" value={manualData.fat} onChangeText={(t) => setManualData({...manualData, fat: t})} /></View>
+              </View>
+            </View>
+          </ScrollView>
+          <TouchableOpacity 
+            style={[styles.continueBtn, {backgroundColor: (manualData.calories && manualData.name) ? '#000' : '#f4f4f5'}]} 
+            disabled={!manualData.calories || !manualData.name} 
+            onPress={submitManual}
+          >
+            <Text style={{color: (manualData.calories && manualData.name) ? '#fff' : '#a1a1aa', fontWeight:'bold', fontSize:16}}>Log Meal</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={styles.modeSwitcherContainer}>
+        <View style={styles.modeSwitcher}>
+          <TouchableOpacity onPress={() => setScanMode('describe')}>{scanMode === 'describe' ? <View style={styles.modeActive}><Text style={styles.modeTextActive}>DESCRIBE</Text></View> : <Text style={styles.modeText}>DESCRIBE</Text>}</TouchableOpacity>
+          <TouchableOpacity onPress={() => setScanMode('photo')}>{scanMode === 'photo' ? <View style={styles.modeActive}><Text style={styles.modeTextActive}>PHOTO</Text></View> : <Text style={styles.modeText}>PHOTO</Text>}</TouchableOpacity>
+          <TouchableOpacity onPress={() => setScanMode('manual')}>{scanMode === 'manual' ? <View style={styles.modeActive}><Text style={styles.modeTextActive}>MANUAL</Text></View> : <Text style={styles.modeText}>MANUAL</Text>}</TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 
@@ -253,7 +359,7 @@ export default function App() {
   const renderWeight = () => (
     <View style={{flex: 1, backgroundColor: '#fff'}}>
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        <View style={styles.weightHeader}><Text style={styles.weightTitle}>Weight</Text><MoreVertical size={24} color="#000" /></View>
+        <View style={styles.weightHeader}><Text style={styles.weightTitle}>Weight</Text><TouchableOpacity><MoreVertical size={24} color="#000" /></TouchableOpacity></View>
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <View><Text style={styles.summaryLabel}>YOU'VE GAINED</Text><Text style={styles.summaryValue}>0 kg</Text></View>
@@ -316,26 +422,103 @@ export default function App() {
     );
   };
 
+  const renderAppearanceModal = () => (
+    <View style={styles.modalContainer}>
+      <View style={styles.patternBg}>{[...Array(6)].map((_, i) => (<Clover key={i} size={48} color="#f4f4f5" style={{position:'absolute', top: Math.random()*400, left: Math.random()*350, transform:[{rotate: `${Math.random()*90}deg`}]}} />))}</View>
+      <View style={styles.modalHeader}><View style={{width: 24}} /><Text style={styles.modalTitle}>Appearance</Text><X size={24} color="#000" onPress={() => setShowAppearance(false)} /></View>
+      <View style={styles.previewContainer}>
+        <Text style={styles.charName}>{selectedChar === 'quacky' ? 'Quacky' : selectedChar === 'robbin' ? 'Robbin' : 'Bamboo'}</Text>
+        <View style={{transform:[{scale: 1.5}], marginVertical: 40}}>{selectedChar === 'quacky' && renderBird()}{selectedChar === 'robbin' && renderRabbit()}{selectedChar === 'bamboo' && renderPanda()}</View>
+        <View style={styles.previewData}><Text style={styles.previewNumbers}>2100 / 2100</Text><Text style={styles.previewLabel}>CALORIES EATEN</Text></View>
+      </View>
+      <View style={styles.selectorContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 24, gap: 12}}>
+          <TouchableOpacity style={[styles.charCard, selectedChar==='quacky' && styles.charCardActive]} onPress={()=>setSelectedChar('quacky')}><View style={styles.cardThumb}><View style={[styles.birdBody, {width: 40, height: 40, borderRadius: 20, borderWidth: 2}]}><View style={[styles.beak, {width: 6, height: 6, top: 16, left: 16}]} /></View></View><Text style={styles.cardTitle}>Quacky</Text><Text style={styles.cardSub}>Unlocked</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.charCard, selectedChar==='robbin' && styles.charCardActive]} onPress={()=>setSelectedChar('robbin')}><View style={styles.premiumBadge}><Crown size={10} color="#000" fill="#fbbf24" /></View><View style={styles.cardThumb}><Rabbit size={32} color="#000" /></View><Text style={styles.cardTitle}>Robbin</Text><Text style={styles.cardSubPremium}>Premium</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.charCard, selectedChar==='bamboo' && styles.charCardActive]} onPress={()=>setSelectedChar('bamboo')}><View style={styles.premiumBadge}><Crown size={10} color="#000" fill="#fbbf24" /></View><View style={styles.cardThumb}><Rat size={32} color="#000" /></View><Text style={styles.cardTitle}>Bamboo</Text><Text style={styles.cardSubPremium}>Premium</Text></TouchableOpacity>
+        </ScrollView>
+      </View>
+    </View>
+  );
+
   const renderPickerModal = () => (
     <Modal transparent animationType="slide" visible={showPicker}>
-      <View style={styles.pickerOverlay}><View style={styles.pickerSheet}>
-        <View style={styles.pickerHeader}><Text style={styles.pickerTitle}>Set Fasting Start</Text><X size={24} color="#000" onPress={() => setShowPicker(false)} /></View>
-        <View style={styles.modernPickerRow}>
-          <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'date' && styles.modernPickerCardActive]} onPress={() => setPickerMode('date')}><Text style={styles.modernPickerLabel}>DATE</Text><Text style={styles.modernPickerValue}>{dateList[selDateIdx].label}</Text></TouchableOpacity>
-          <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'time' && styles.modernPickerCardActive]} onPress={() => setPickerMode('time')}><Text style={styles.modernPickerLabel}>TIME</Text><Text style={styles.modernPickerValue}>{selHour.toString().padStart(2, '0')}:{selMin.toString().padStart(2, '0')}</Text></TouchableOpacity>
-        </View>
-        <View style={{height: 200, marginBottom: 20}}>
-          {pickerMode === 'date' ? (
-            <ScrollPicker dataSource={dateList.map(d => d.label)} selectedIndex={selDateIdx} onValueChange={(_, i) => setSelDateIdx(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} />
-          ) : (
-            <View style={{flexDirection:'row'}}><ScrollPicker dataSource={hours} selectedIndex={selHour} onValueChange={(_, i) => setSelHour(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /><ScrollPicker dataSource={minutes} selectedIndex={selMin} onValueChange={(_, i) => setSelMin(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /></View>
-          )}
-        </View>
-        <TouchableOpacity style={styles.continueFastBtn} onPress={() => { const d = new Date(dateList[selDateIdx].value); d.setHours(selHour, selMin); startFasting(d); setShowPicker(false); }}><Text style={styles.continueFastText}>Confirm & Start Fast</Text></TouchableOpacity>
-      </View></View>
+      <View style={styles.pickerOverlay}>
+        <View style={styles.pickerSheet}>
+          <View style={styles.pickerHeader}><Text style={styles.pickerTitle}>Set Fasting Start</Text><X size={24} color="#000" onPress={() => setShowPicker(false)} /></View>
+          <View style={styles.modernPickerRow}>
+            <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'date' && styles.modernPickerCardActive]} onPress={() => setPickerMode('date')}><Text style={styles.modernPickerLabel}>DATE</Text><Text style={styles.modernPickerValue}>{dateList[selDateIdx].label}</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'time' && styles.modernPickerCardActive]} onPress={() => setPickerMode('time')}><Text style={styles.modernPickerLabel}>TIME</Text><Text style={styles.modernPickerValue}>{selHour.toString().padStart(2, '0')}:{selMin.toString().padStart(2, '0')}</Text></TouchableOpacity>
+          </View>
+          <View style={{height: 200, marginBottom: 20}}>
+            {pickerMode === 'date' ? (
+              <ScrollPicker dataSource={dateList.map(d => d.label)} selectedIndex={selDateIdx} onValueChange={(_, i) => setSelDateIdx(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} />
+            ) : (
+              <View style={{flexDirection:'row'}}><ScrollPicker dataSource={hours} selectedIndex={selHour} onValueChange={(_, i) => setSelHour(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /><ScrollPicker dataSource={minutes} selectedIndex={selMin} onValueChange={(_, i) => setSelMin(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /></View>
+            )}
+          </View>
+          <TouchableOpacity style={styles.continueFastBtn} onPress={() => { const d = new Date(dateList[selDateIdx].value); d.setHours(selHour, selMin); startFasting(d); setShowPicker(false); }}><Text style={styles.continueFastText}>Confirm & Start Fast</Text></TouchableOpacity>
+        </View></View>
     </Modal>
   );
 
+  const renderFastingPlanModal = () => (
+    <View style={styles.modalContainer}>
+      <View style={styles.modalHeader}>
+        <TouchableOpacity onPress={() => setShowFastingPlan(false)}><ChevronLeft size={24} color="#000" /></TouchableOpacity>
+        <Text style={styles.modalTitle}>Fasting Plans</Text>
+        <View style={{width: 24}} />
+      </View>
+      <ScrollView contentContainerStyle={{padding: 24, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'}}>
+        {[
+          { title: '14:10', icon: <Apple size={20} color="#4ade80" />, desc: 'Easy your way into fasting for 14 hours...' },
+          { title: '16:8', icon: <Citrus size={20} color="#fbbf24" />, desc: 'Our most popular tracker! 16 hours fasting...' },
+          { title: '20:4', icon: <Egg size={20} color="#a3e635" />, desc: '20 hours of fasting...' },
+          { title: '22:2', icon: <Citrus size={20} color="#facc15" />, desc: '22 hours of fasting...' },
+          { title: '6:1', icon: <Nut size={20} color="#a8a29e" />, desc: 'One fasting day per week...' },
+          { title: '5:2', icon: <Circle size={20} color="#4ade80" />, desc: 'Two fasting days per week...' },
+        ].map((p, i) => (
+          <TouchableOpacity key={i} style={styles.planCard} onPress={() => {setSelectedPlan(p.title); setShowFastingPlan(false);}}>
+            <View style={styles.planHeader}><Text style={styles.planTitle}>{p.title}</Text>{p.icon}</View>
+            <Text style={styles.planDesc}>{p.desc}</Text>
+            <View style={selectedPlan === p.title ? styles.planToggleActive : styles.planToggle}>
+              {selectedPlan === p.title && <View style={{width:10, height:10, borderRadius:5, backgroundColor:'#fff'}} />}
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  const renderEditModal = () => (
+    <Modal visible={showEdit} animationType="fade" transparent>
+      <View style={styles.editOverlay}>
+        <View style={styles.editCard}>
+          <Text style={styles.editTitle}>Edit Meal</Text>
+          <View style={styles.editInputRow}>
+            <Text style={styles.editLabel}>Name</Text>
+            <TextInput style={styles.editInput} value={editingMeal?.name} onChangeText={t => setEditingMeal(prev => prev ? {...prev, name: t} : null)} />
+          </View>
+          <View style={styles.editInputRow}>
+            <Text style={styles.editLabel}>Calories</Text>
+            <TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.calories || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, calories: parseInt(t)||0} : null)} />
+          </View>
+          <View style={{flexDirection:'row', gap:12}}>
+            <View style={{flex:1}}><Text style={styles.editLabel}>Protein</Text><TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.macros.protein || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, macros: {...prev.macros, protein: parseInt(t)||0}} : null)} /></View>
+            <View style={{flex:1}}><Text style={styles.editLabel}>Carbs</Text><TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.macros.carbs || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, macros: {...prev.macros, carbs: parseInt(t)||0}} : null)} /></View>
+            <View style={{flex:1}}><Text style={styles.editLabel}>Fat</Text><TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.macros.fat || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, macros: {...prev.macros, fat: parseInt(t)||0}} : null)} /></View>
+          </View>
+          <View style={styles.editActions}>
+            <TouchableOpacity style={styles.deleteBtn} onPress={deleteMeal}><Trash2 size={24} color="#ef4444" /></TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={saveEdit}><Text style={{color:'#fff', fontWeight:'bold'}}>Save</Text></TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.closeEdit} onPress={() => setShowEdit(false)}><X size={24} color="#000" /></TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // --- MAIN RENDER ---
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
@@ -371,8 +554,11 @@ export default function App() {
         )}
 
         <Modal visible={showCamera} animationType="slide">{renderAddMealModal()}</Modal>
+        <Modal visible={showAppearance} animationType="slide" presentationStyle="pageSheet">{renderAppearanceModal()}</Modal>
+        <Modal visible={showFastingPlan} animationType="slide" presentationStyle="pageSheet">{renderFastingPlanModal()}</Modal>
         <Modal visible={showFastStartModal} transparent animationType="fade">{renderFastStartModal()}</Modal>
         <Modal visible={showEndFastModal} transparent animationType="fade">{renderEndFastModal()}</Modal>
+        {renderEditModal()}
         {renderPickerModal()}
       </SafeAreaView>
     </SafeAreaProvider>
@@ -384,7 +570,23 @@ function MealItem({ meal, onPress }: { meal: Meal; onPress?: () => void }) {
   return (
     <TouchableOpacity style={styles.mealCard} onPress={onPress}>
       <Image source={{ uri: meal.image }} style={styles.mealImg} />
-      <View style={styles.mealContent}><Text style={styles.mealName}>{meal.name}</Text><Text style={styles.macroText}>{meal.macros.protein}p {meal.macros.carbs}c {meal.macros.fat}f</Text></View>
+      <View style={styles.mealContent}>
+        <Text style={styles.mealName}>{meal.name}</Text>
+        <View style={styles.macroTagRow}>
+           <View style={styles.macroIndicatorRow}>
+             <View style={[styles.smallMacroBar, {backgroundColor: '#34d399'}]} />
+             <Text style={styles.macroText}>{meal.macros.protein}g P</Text>
+           </View>
+           <View style={styles.macroIndicatorRow}>
+             <View style={[styles.smallMacroBar, {backgroundColor: '#60a5fa'}]} />
+             <Text style={styles.macroText}>{meal.macros.carbs}g C</Text>
+           </View>
+           <View style={styles.macroIndicatorRow}>
+             <View style={[styles.smallMacroBar, {backgroundColor: '#f472b6'}]} />
+             <Text style={styles.macroText}>{meal.macros.fat}g F</Text>
+           </View>
+        </View>
+      </View>
       <View style={{alignItems:'flex-end'}}><Text style={styles.mealCal}>{meal.calories}</Text><Text style={styles.mealUnit}>kcal</Text></View>
     </TouchableOpacity>
   );
@@ -427,7 +629,10 @@ const styles = StyleSheet.create({
   mealImg: { width: 56, height: 56, borderRadius: 12, backgroundColor: '#f4f4f5' },
   mealContent: { flex: 1, marginLeft: 12 },
   mealName: { fontSize: 16, fontWeight: '700', color: '#18181b', marginBottom: 4 },
-  macroText: { fontSize: 12, color: '#71717a' },
+  macroText: { fontSize: 12, color: '#71717a', fontWeight: '500' },
+  macroIndicatorRow: { flexDirection: 'row', alignItems: 'center', marginRight: 12 },
+  smallMacroBar: { width: 3, height: 12, borderRadius: 2, marginRight: 4 },
+  macroSeparator: { fontSize: 12, color: '#d4d4d8', marginHorizontal: 4 },
   mealCal: { fontSize: 18, fontWeight: '900', color: '#18181b' },
   mealUnit: { fontSize: 10, color: '#a1a1aa', fontWeight: 'bold' },
   fabContainer: { position: 'absolute', bottom: 110, alignSelf: 'center', zIndex: 20 },
@@ -503,9 +708,64 @@ const styles = StyleSheet.create({
   shutterOuter: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   shutterInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff' },
   modeSwitcherContainer: { position: 'absolute', bottom: 20, width: '100%', alignItems: 'center' },
-  modeSwitcher: { flexDirection: 'row', gap: 20 },
+  modeSwitcher: { flexDirection: 'row', gap: 20, alignItems: 'center' },
+  modeText: { color: '#71717a', fontWeight: '600', fontSize: 12 },
+  modeActive: { backgroundColor: '#333', paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12 },
+  modeTextActive: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  describeLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 20 },
+  describeHint: { fontSize: 12, color: '#a1a1aa', marginTop: 10 },
+  manualTitleInput: { fontSize: 24, fontWeight: 'bold', color: '#000', flex: 1, marginRight: 10 },
+  formSection: { paddingHorizontal: 24, marginBottom: 24 },
+  formLabel: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
+  inputRowFull: { width: '100%', height: 50, backgroundColor: '#f4f4f5', borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingRight: 16 },
+  textInput: { fontSize: 20, fontWeight: 'bold', width: '100%', textAlign: 'center' },
+  textInputSmall: { fontSize: 16, fontWeight: 'bold', width: '100%', textAlign: 'center' },
+  inputLabel: { fontWeight: '600', fontSize: 16 },
+  inputBox: { width: 80, height: 40, backgroundColor: '#f4f4f5', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  macroInputRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f4f4f5', paddingBottom: 12 },
+  continueBtn: { backgroundColor: '#f4f4f5', margin: 24, marginBottom: 100, padding: 16, borderRadius: 16, alignItems: 'center' },
+  camLogoText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  camBottom: { paddingBottom: 50, alignItems: 'center' },
+  shutterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', width: '100%', paddingHorizontal: 40 },
+  galleryBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' },
+  shutterOuter: { width: 80, height: 80, borderRadius: 40, borderWidth: 4, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  shutterInner: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#fff' },
+  manualHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
   describeContainer: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: 50, padding: 20 },
+  manualContainer: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: 50 },
   describeHeader: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20 },
-  describeInput: { fontSize: 32, fontWeight: '300', textAlign: 'center', marginBottom: 40 },
+  describeInput: { fontSize: 32, fontWeight: '300', textAlign: 'center', marginBottom: 40, color: '#000' },
   micButton: { alignSelf: 'center', width: 80, height: 80, borderRadius: 40, backgroundColor: '#f4f4f5', alignItems: 'center', justifyContent: 'center' },
+  editOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  editCard: { width: '85%', backgroundColor: '#fff', borderRadius: 24, padding: 24 },
+  editTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  editInputRow: { marginBottom: 16 },
+  editLabel: { fontSize: 12, fontWeight: 'bold', color: '#a1a1aa', marginBottom: 4 },
+  editInput: { borderBottomWidth: 1, borderBottomColor: '#e4e4e7', fontSize: 16, paddingVertical: 8 },
+  editActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
+  deleteBtn: { padding: 12, borderRadius: 12, backgroundColor: '#fee2e2', width: 50, alignItems:'center' },
+  saveBtn: { flex: 1, marginLeft: 12, backgroundColor: '#000', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  closeEdit: { position: 'absolute', top: 16, right: 16 },
+  modalContainer: { flex: 1, backgroundColor: '#fff' },  patternBg: { ...StyleSheet.absoluteFillObject, opacity: 0.5, zIndex: -1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold' },
+  previewContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
+  charName: { fontSize: 32, fontWeight: '900', color: '#000' },
+  previewData: { alignItems: 'center', opacity: 0.4 },
+  previewNumbers: { fontSize: 24, fontWeight: 'bold' },
+  previewLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  selectorContainer: { marginTop: 40, height: 200 },
+  charCard: { width: 120, height: 160, backgroundColor: '#f4f4f5', borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  charCardActive: { borderWidth: 3, borderColor: '#fbbf24', backgroundColor: '#fff' },
+  cardThumb: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  cardTitle: { fontWeight: 'bold', fontSize: 16 },
+  cardSub: { fontSize: 12, color: '#a1a1aa' },
+  cardSubPremium: { fontSize: 12, color: '#fbbf24', fontWeight: 'bold' },
+  premiumBadge: { position: 'absolute', top: 8, right: 8 },
+  planCard: { width: '48%', backgroundColor: '#f4f4f5', borderRadius: 20, padding: 16, marginBottom: 16 },
+  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  planTitle: { fontWeight: 'bold', fontSize: 18 },
+  planDesc: { color: '#71717a', fontSize: 12, marginBottom: 12 },
+  planToggle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#d4d4d8', alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'center' },
+  planToggleActive: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#4ade80', alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'center' },
 });
