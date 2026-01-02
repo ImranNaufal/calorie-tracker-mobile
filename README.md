@@ -14,6 +14,16 @@ A modern, high-fidelity mobile application that uses **Google Gemini 2.0 Flash (
 
 ---
 
+## 📸 Screenshots
+
+| Home & AI Scan | Fasting Timer |
+|:---:|:---:|
+| <img src="assets/home_ui.png" width="300" /> | <img src="assets/fasting_ui.png" width="300" /> |
+| **Weight Tracker** | **Wellness Dashboard** |
+| <img src="assets/weight_ui.png" width="300" /> | <img src="assets/wellness_ui.png" width="300" /> |
+
+---
+
 ## 🛠️ Installation & Setup
 
 ### 1. Clone the Repository
