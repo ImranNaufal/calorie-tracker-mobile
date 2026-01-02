@@ -70,7 +70,7 @@ The keys are currently managed via `FORCED_GEMINI_KEY` inside `App.tsx` to bypas
 
 ## 📸 Screenshots
 
-*(Add your high-resolution screenshots here to showcase the high-fidelity Wellness UI!)*
+![Wellness Dashboard](./assets/wellness_ui.png)
 
 ---
 
