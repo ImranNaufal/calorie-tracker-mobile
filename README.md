@@ -70,7 +70,17 @@ The keys are currently managed via `FORCED_GEMINI_KEY` inside `App.tsx` to bypas
 
 ## 📸 Screenshots
 
+### 1. Home Dashboard (AI Calorie Tracking)
+![Home Dashboard](./assets/home_ui.png)
+
+### 2. Wellness Module (Spec-Driven UI)
 ![Wellness Dashboard](./assets/wellness_ui.png)
+
+### 3. Smart Fasting Tracker
+![Fasting Dashboard](./assets/fasting_ui.png)
+
+### 4. Weight Progress & Analytics
+![Weight Dashboard](./assets/weight_ui.png)
 
 ---
 
