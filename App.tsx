@@ -8,10 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ScrollPicker from 'react-native-wheel-scrollview-picker';
 import LineChart from 'react-native-chart-kit/dist/line-chart/LineChart';
-import { Plus, Activity, Zap, Droplets, Camera, Flame, Home, User, ScanLine, ChevronRight, Settings, Target, Ruler, Weight, PawPrint, Utensils, Heart, Scale, Scan, X, Crown, Clover, Rabbit, Rat, Carrot, Info, Apple, Image as ImageIcon, Barcode, Mic, Wheat, Beef, Trash2, Save, ChevronLeft, Citrus, Egg, Nut, Circle, MoreVertical, ArrowRight } from 'lucide-react-native';
-
-const GEMINI_API_KEY = "AIzaSyDc5wCtTu4zeTLDN3ihJXdhTxDJV5CqLIo"; 
-
+import { Plus, Activity, Zap, Droplets, Camera, Flame, Home, User, ScanLine, ChevronRight, Settings, Target, Ruler, Weight, PawPrint, Utensils, Heart, Scale, Scan, X, Crown, Clover, Rabbit, Rat, Carrot, Info, Apple, Image as ImageIcon, Barcode, Mic, Wheat, Beef, Trash2, Save, ChevronLeft, Citrus, Egg, Nut, Circle, MoreVertical, ArrowRight, Calendar } from 'lucide-react-native';
+import { GEMINI_API_KEY } from '@env';
 interface Meal {
   id: string;
   name: string;
@@ -81,13 +79,101 @@ export default function App() {
   const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
   // Weight State
-  const [weightHistory, setWeightHistory] = useState([{ id: '1', weight: 75, date: '01 Jan', change: '' }]);
+  const [weightHistory, setWeightHistory] = useState([
+    { id: '1', weight: 74.5, date: '28 Dec', change: '' },
+    { id: '2', weight: 75.0, date: '01 Jan', change: '+0.5' },
+  ]);
   const [weightUnit, setWeightUnit] = useState('Days');
+  const [weightGoal, setWeightGoal] = useState(75.0);
+  const [showWeightModal, setShowWeightModal] = useState(false);
+  const [showEditGoalModal, setShowEditGoalModal] = useState(false);
+  const [showWeightMenu, setShowWeightMenu] = useState(false);
+  const [showEditWeightModal, setShowEditWeightModal] = useState(false);
+  const [editingWeightEntry, setEditingWeightEntry] = useState<any>(null);
+  const [selWeightWhole, setSelWeightWhole] = useState(75);
+  const [selWeightFraction, setSelWeightFraction] = useState(0);
+  const [weightPhoto, setWeightPhoto] = useState<string | null>(null);
+  const [logDate, setLogDate] = useState(new Date());
+  const [pickerOwner, setPickerOwner] = useState<'fasting' | 'weight'>('fasting');
 
-  // Character / Common
-  const [selectedChar, setSelectedChar] = useState('quacky');
-  const [scanMode, setScanMode] = useState<'describe' | 'photo' | 'manual'>('photo');
-  const [userProfile, setUserProfile] = useState({ calories: 2155, protein: 180, weight: 75, height: 180 });
+  const calculateDynamicTargets = (currentW: number, goalW: number) => {
+    // Mifflin-St Jeor for Male (Prototype default: Age 25, Height from profile)
+    const bmr = (10 * currentW) + (6.25 * userProfile.height) - (5 * 25) + 5;
+    const tdee = bmr * 1.5; // Moderate activity factor
+    
+    let targetCals = Math.round(tdee);
+    if (goalW < currentW) targetCals -= 500; // Weight loss deficit
+    else if (goalW > currentW) targetCals += 500; // weight gain surplus
+    
+    const targetProtein = Math.round(currentW * 2); // 2g per kg
+    return { calories: targetCals, protein: targetProtein };
+  };
+
+  const openEditWeight = (entry: any) => {
+    const [whole, fraction] = entry.weight.toString().split('.');
+    setSelWeightWhole(parseInt(whole));
+    setSelWeightFraction(parseInt(fraction || '0'));
+    setEditingWeightEntry(entry);
+    // Note: Parsing the date back from '01 Jan' format is tricky, 
+    // so we'll default the picker to today or keep original date if we stored it as Date.
+    // For now, let's keep the logic simple.
+    setShowEditWeightModal(true);
+  };
+
+  const deleteWeightEntry = () => {
+    if (!editingWeightEntry) return;
+    setWeightHistory(prev => prev.filter(h => h.id !== editingWeightEntry.id));
+    setShowEditWeightModal(false);
+    Vibration.vibrate(50);
+  };
+
+        const saveWeightEdit = () => {
+          if (!editingWeightEntry) return;
+          const val = parseFloat(`${selWeightWhole}.${selWeightFraction}`);
+          setWeightHistory(prev => prev.map(h => 
+            h.id === editingWeightEntry.id 
+              ? { ...h, weight: val, date: logDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }) } 
+              : h
+          ));
+          
+          // Update profile based on the latest history entry
+          const latestWeight = weightHistory[weightHistory.length - 1]?.id === editingWeightEntry.id ? val : weightHistory[weightHistory.length - 1].weight;
+          const targets = calculateDynamicTargets(latestWeight, weightGoal);
+          setUserProfile(prev => ({ ...prev, weight: latestWeight, ...targets }));
+          
+          setShowEditWeightModal(false);
+          Vibration.vibrate(20);
+        };
+    
+        const weightWholeList = Array.from({ length: 200 }, (_, i) => (i + 30).toString());
+        const weightFractionList = Array.from({ length: 10 }, (_, i) => i.toString());
+    
+        const submitWeight = () => {
+          const val = parseFloat(`${selWeightWhole}.${selWeightFraction}`);
+          if (!val) return;
+          
+          const lastWeight = weightHistory[weightHistory.length - 1]?.weight || val;
+          const diff = val - lastWeight;
+          const changeStr = diff === 0 ? '' : (diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`);
+    
+          const newEntry = {
+            id: Date.now().toString(),
+            weight: val,
+            date: logDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }),
+            change: changeStr
+          };
+    
+          const targets = calculateDynamicTargets(val, weightGoal);
+          setWeightHistory(prev => [...prev, newEntry]);
+          setUserProfile(prev => ({ ...prev, weight: val, ...targets }));
+          setShowWeightModal(false);
+          setLogDate(new Date());
+              Vibration.vibrate(50);
+            };
+          
+            // Character / Common
+            const [selectedChar, setSelectedChar] = useState('quacky');
+            const [scanMode, setScanMode] = useState<'describe' | 'photo' | 'manual'>('photo');  const [userProfile, setUserProfile] = useState({ calories: 2155, protein: 180, weight: 75, height: 180 });
   const [describeText, setDescribeText] = useState('');
   const [manualData, setManualData] = useState({ calories: '', protein: '', carbs: '', fat: '', name: '' });
 
@@ -356,56 +442,136 @@ export default function App() {
     );
   };
 
-  const renderWeight = () => (
-    <View style={{flex: 1, backgroundColor: '#fff'}}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        <View style={styles.weightHeader}><Text style={styles.weightTitle}>Weight</Text><TouchableOpacity><MoreVertical size={24} color="#000" /></TouchableOpacity></View>
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <View><Text style={styles.summaryLabel}>YOU'VE GAINED</Text><Text style={styles.summaryValue}>0 kg</Text></View>
-            <View style={{alignItems: 'flex-end'}}><Text style={styles.summaryLabel}>CURRENT WEIGHT</Text><Text style={styles.summaryValueLarge}>75 kg</Text></View>
-          </View>
-          <View style={{marginTop: 20}}><Text style={styles.goalLabel}>0% GOAL REACHED</Text>
-            <View style={styles.progressBarBg}><View style={styles.progressBarFill} /></View>
-            <View style={styles.progressLabels}><Text style={styles.progressLimit}>75 kg</Text><ArrowRight size={14} color="#fff" /><Text style={styles.progressLimit}>75 kg</Text></View>
-          </View>
-        </View>
-        <View style={{paddingHorizontal: 24, marginTop: 32}}>
-          <Text style={styles.sectionHeaderTitle}>Weight Progress (kg)</Text>
-          <View style={styles.segmentedControl}>
-            <TouchableOpacity style={[styles.segmentBtn, weightUnit === 'Days' && styles.segmentBtnActive]} onPress={() => setWeightUnit('Days')}><Text style={[styles.segmentText, weightUnit === 'Days' && styles.segmentTextActive]}>Days</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.segmentBtn, weightUnit === 'Months' && styles.segmentBtnActive]} onPress={() => setWeightUnit('Months')}><Text style={[styles.segmentText, weightUnit === 'Months' && styles.segmentTextActive]}>Months</Text></TouchableOpacity>
-          </View>
-          <View style={{marginTop: 20, marginLeft: -20}}>
-            <LineChart
-              data={{ labels: ["28.12", "01.01", "02.01"], datasets: [{ data: [75], color: () => '#3b82f6' }, { data: [75, 75, 75], withDots: false, color: () => '#ef4444' }] }}
-              width={Dimensions.get("window").width} height={220}
-              chartConfig={{ backgroundColor: "#fff", backgroundGradientFrom: "#fff", backgroundGradientTo: "#fff", color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`, labelColor: () => '#a1a1aa', propsForBackgroundLines: { strokeDasharray: "" } }}
-              bezier fromZero={false} yAxisInterval={1} segments={4} style={{ borderRadius: 16 }}
-            />
-          </View>
-          <View style={styles.legendRow}>
-            <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor:'#3b82f6'}]} /><Text style={styles.legendText}>Your Weight</Text></View>
-            <View style={styles.legendItem}><View style={[styles.legendDash, {backgroundColor:'#ef4444'}]} /><Text style={styles.legendText}>Weight Goal</Text></View>
-          </View>
-        </View>
-        <View style={{paddingHorizontal: 24, marginTop: 40}}>
-          <Text style={styles.sectionHeaderTitle}>History</Text>
-          <View style={styles.historyHeaders}><Text style={[styles.historyHeader, {flex:1}]}>Weight</Text><Text style={[styles.historyHeader, {flex:1, textAlign:'center'}]}>Change</Text><Text style={[styles.historyHeader, {flex:1, textAlign:'right'}]}>Date</Text></View>
-          {weightHistory.map(item => (
-            <View key={item.id} style={styles.historyItem}><View style={styles.historyIconBox}><User size={20} color="#71717a" /></View><Text style={{flex: 1, fontWeight:'bold'}}>{item.weight} kg</Text><Text style={{flex: 1, textAlign:'center', color:'#a1a1aa'}}>{item.change}</Text><Text style={{flex: 1, textAlign:'right', color:'#a1a1aa'}}>{item.date}</Text></View>
-          ))}
-        </View>
-      </ScrollView>
-      <TouchableOpacity style={styles.logWeightFab}><Plus size={20} color="#fff" /><Text style={styles.logWeightText}>Log Weight</Text></TouchableOpacity>
-    </View>
-  );
+      const renderWeight = () => {
 
+        const currentWeight = weightHistory[weightHistory.length - 1]?.weight || 0;
+
+        const initialWeight = weightHistory[0]?.weight || 0;
+
+        const gained = (currentWeight - initialWeight).toFixed(1);
+
+        const goalProgress = initialWeight === weightGoal ? 100 : Math.min(Math.max((Math.abs(currentWeight - initialWeight) / Math.abs(weightGoal - initialWeight)) * 100, 0), 100).toFixed(0);
+
+    
+
+        // Process data based on Days/Months selection
+
+        let chartLabels = [];
+
+        let chartData = [];
+
+    
+
+        if (weightUnit === 'Days') {
+
+          chartLabels = weightHistory.slice(-5).map(h => h.date);
+
+          chartData = weightHistory.slice(-5).map(h => h.weight);
+
+        } else {
+
+          chartLabels = ['Nov', 'Dec', 'Jan'];
+
+          chartData = [74.0, 74.5, currentWeight];
+
+        }
+
+    
+
+        if (chartData.length === 0) {
+
+          chartLabels = ['No Data'];
+
+          chartData = [0];
+
+        }
+
+    
+
+        return (
+
+          <View style={{flex: 1, backgroundColor: '#fff'}}>
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+
+                        <View style={styles.weightHeader}>
+
+                          <Text style={styles.weightTitle}>Weight</Text>
+
+                          <TouchableOpacity onPress={() => setShowWeightMenu(true)} style={{padding: 10}}>
+
+                            <MoreVertical size={24} color="#000" />
+
+                          </TouchableOpacity>
+
+                        </View>
+
+              <View style={styles.summaryCard}>
+
+                <View style={styles.summaryRow}>
+
+                  <View><Text style={styles.summaryLabel}>{parseFloat(gained) >= 0 ? "YOU'VE GAINED" : "YOU'VE LOST"}</Text><Text style={styles.summaryValue}>{Math.abs(parseFloat(gained))} kg</Text></View>
+
+                  <View style={{alignItems: 'flex-end'}}><Text style={styles.summaryLabel}>CURRENT WEIGHT</Text><Text style={styles.summaryValueLarge}>{currentWeight} kg</Text></View>
+
+                </View>
+
+                <View style={{marginTop: 20}}><Text style={styles.goalLabel}>{goalProgress}% GOAL REACHED</Text>
+
+                  <View style={styles.progressBarBg}><View style={[styles.progressBarFill, {width: `${goalProgress}%`}]} /></View>
+
+                  <View style={styles.progressLabels}><Text style={styles.progressLimit}>{initialWeight} kg</Text><ArrowRight size={14} color="#fff" /><Text style={styles.progressLimit}>{weightGoal} kg</Text></View>
+
+                </View>
+
+              </View>
+            <View style={{paddingHorizontal: 24, marginTop: 32}}>
+              <Text style={styles.sectionHeaderTitle}>Weight Progress (kg)</Text>
+              <View style={styles.segmentedControl}>
+                <TouchableOpacity style={[styles.segmentBtn, weightUnit === 'Days' && styles.segmentBtnActive]} onPress={() => setWeightUnit('Days')}><Text style={[styles.segmentText, weightUnit === 'Days' && styles.segmentTextActive]}>Days</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.segmentBtn, weightUnit === 'Months' && styles.segmentBtnActive]} onPress={() => setWeightUnit('Months')}><Text style={[styles.segmentText, weightUnit === 'Months' && styles.segmentTextActive]}>Months</Text></TouchableOpacity>
+              </View>
+              <View style={{marginTop: 20, marginLeft: -20}}>
+                <LineChart
+                  data={{ 
+                    labels: chartLabels, 
+                    datasets: [
+                      { data: chartData, color: () => '#3b82f6' }, 
+                      { data: new Array(chartData.length).fill(weightGoal), withDots: false, color: () => '#ef4444' }
+                    ] 
+                  }}
+                  width={Dimensions.get("window").width} height={220}
+                  chartConfig={{ backgroundColor: "#fff", backgroundGradientFrom: "#fff", backgroundGradientTo: "#fff", color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, labelColor: () => '#a1a1aa', propsForBackgroundLines: { strokeDasharray: "" }, decimalPlaces: 1 }}
+                  bezier fromZero={false} yAxisInterval={1} segments={4} style={{ borderRadius: 16 }}
+                />
+              </View>
+              <View style={styles.legendRow}>
+                <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor:'#3b82f6'}]} /><Text style={styles.legendText}>Your Weight</Text></View>
+                <View style={styles.legendItem}><View style={[styles.legendDash, {backgroundColor:'#ef4444'}]} /><Text style={styles.legendText}>Weight Goal</Text></View>
+              </View>
+            </View>
+            <View style={{paddingHorizontal: 24, marginTop: 40}}>
+              <Text style={styles.sectionHeaderTitle}>History</Text>
+              <View style={styles.historyHeaders}><Text style={[styles.historyHeader, {flex:1}]}>Weight</Text><Text style={[styles.historyHeader, {flex:1, textAlign:'center'}]}>Change</Text><Text style={[styles.historyHeader, {flex:1, textAlign:'right'}]}>Date</Text></View>
+              {[...weightHistory].reverse().map(item => (
+                <TouchableOpacity key={item.id} style={styles.historyItem} onPress={() => openEditWeight(item)}>
+                  <View style={styles.historyIconBox}><User size={20} color="#71717a" /></View>
+                  <Text style={{flex: 1, fontWeight:'bold'}}>{item.weight} kg</Text>
+                  <Text style={{flex: 1, textAlign:'center', color: item.change.includes('+') ? '#ef4444' : '#10b981'}}>{item.change}</Text>
+                  <Text style={{flex: 1, textAlign:'right', color:'#a1a1aa'}}>{item.date}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          <TouchableOpacity style={styles.logWeightFab} onPress={() => setShowWeightModal(true)}><Plus size={20} color="#fff" /><Text style={styles.logWeightText}>Log Weight</Text></TouchableOpacity>
+        </View>
+      );
+    };
   const renderFastStartModal = () => (
     <View style={styles.fastModalOverlay}><View style={styles.endFastSheet}>
       <Text style={styles.endFastTitle}>When was your last meal?</Text>
       <TouchableOpacity style={styles.continueFastBtn} onPress={() => startFasting(new Date())}><Text style={styles.continueFastText}>Now</Text></TouchableOpacity>
-      <TouchableOpacity style={styles.cancelFastBtn} onPress={() => { setShowFastStartModal(false); setShowPicker(true); setPickerMode('date'); }}><Text style={styles.cancelFastText}>Choose exact time & date</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.cancelFastBtn} onPress={() => { setPickerOwner('fasting'); setShowFastStartModal(false); setShowPicker(true); setPickerMode('date'); }}><Text style={styles.cancelFastText}>Choose exact time & date</Text></TouchableOpacity>
       <TouchableOpacity onPress={() => setShowFastStartModal(false)}><Text style={{color:'#3b82f6', marginTop:12, fontWeight:'600'}}>Cancel</Text></TouchableOpacity>
     </View></View>
   );
@@ -441,24 +607,392 @@ export default function App() {
     </View>
   );
 
-  const renderPickerModal = () => (
-    <Modal transparent animationType="slide" visible={showPicker}>
-      <View style={styles.pickerOverlay}>
-        <View style={styles.pickerSheet}>
-          <View style={styles.pickerHeader}><Text style={styles.pickerTitle}>Set Fasting Start</Text><X size={24} color="#000" onPress={() => setShowPicker(false)} /></View>
-          <View style={styles.modernPickerRow}>
-            <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'date' && styles.modernPickerCardActive]} onPress={() => setPickerMode('date')}><Text style={styles.modernPickerLabel}>DATE</Text><Text style={styles.modernPickerValue}>{dateList[selDateIdx].label}</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.modernPickerCard, pickerMode === 'time' && styles.modernPickerCardActive]} onPress={() => setPickerMode('time')}><Text style={styles.modernPickerLabel}>TIME</Text><Text style={styles.modernPickerValue}>{selHour.toString().padStart(2, '0')}:{selMin.toString().padStart(2, '0')}</Text></TouchableOpacity>
+    const renderPickerModal = () => (
+
+      <Modal transparent animationType="slide" visible={showPicker}>
+
+        <View style={styles.pickerOverlay}><View style={styles.pickerSheet}>
+
+          <View style={styles.pickerHeader}>
+
+            <Text style={styles.pickerTitle}>
+
+              {pickerOwner === 'fasting' ? 'Pick Start Time' : 'Select Date'}
+
+            </Text>
+
+            <X size={24} color="#000" onPress={() => setShowPicker(false)} />
+
           </View>
+
+          
+
+          <View style={styles.modernPickerRow}>
+
+            <TouchableOpacity 
+
+              style={[styles.modernPickerCard, pickerMode === 'date' && styles.modernPickerCardActive]} 
+
+              onPress={() => setPickerMode('date')}
+
+            >
+
+              <Text style={styles.modernPickerLabel}>DATE</Text>
+
+              <Text style={styles.modernPickerValue}>{dateList[selDateIdx].label}</Text>
+
+            </TouchableOpacity>
+
+  
+
+            {pickerOwner === 'fasting' && (
+
+              <TouchableOpacity 
+
+                style={[styles.modernPickerCard, pickerMode === 'time' && styles.modernPickerCardActive]} 
+
+                onPress={() => setPickerMode('time')}
+
+              >
+
+                <Text style={styles.modernPickerLabel}>TIME</Text>
+
+                <Text style={styles.modernPickerValue}>{selHour.toString().padStart(2, '0')}:{selMin.toString().padStart(2, '0')}</Text>
+
+              </TouchableOpacity>
+
+            )}
+
+          </View>
+
           <View style={{height: 200, marginBottom: 20}}>
+
             {pickerMode === 'date' ? (
+
               <ScrollPicker dataSource={dateList.map(d => d.label)} selectedIndex={selDateIdx} onValueChange={(_, i) => setSelDateIdx(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} />
+
             ) : (
+
               <View style={{flexDirection:'row'}}><ScrollPicker dataSource={hours} selectedIndex={selHour} onValueChange={(_, i) => setSelHour(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /><ScrollPicker dataSource={minutes} selectedIndex={selMin} onValueChange={(_, i) => setSelMin(i)} wrapperHeight={200} itemHeight={50} highlightColor="#000" highlightBorderWidth={2} /></View>
+
+            )}
+
+          </View>
+
+          <TouchableOpacity style={styles.continueFastBtn} onPress={() => { 
+
+            const d = new Date(dateList[selDateIdx].value); 
+
+            d.setHours(selHour, selMin); 
+
+            if (pickerOwner === 'fasting') {
+
+              startFasting(d); 
+
+            } else {
+
+              setLogDate(d);
+
+            }
+
+            setShowPicker(false); 
+
+          }}><Text style={styles.continueFastText}>Confirm</Text></TouchableOpacity>
+
+        </View></View>
+
+      </Modal>
+
+    );
+
+  const renderEditWeightModal = () => (
+    <Modal visible={showEditWeightModal} animationType="slide" presentationStyle="fullScreen">
+      <SafeAreaView style={styles.weightLogContainer}>
+        <View style={styles.weightLogHeader}>
+          <TouchableOpacity onPress={deleteWeightEntry}>
+            <Trash2 size={24} color="#ef4444" />
+          </TouchableOpacity>
+          <Text style={styles.weightLogTitle}>Edit Weight</Text>
+          <TouchableOpacity style={styles.weightLogClose} onPress={() => setShowEditWeightModal(false)}>
+            <X size={20} color="#000" />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.todayLabelRow} 
+          onPress={() => { setPickerOwner('weight'); setShowPicker(true); setPickerMode('date'); }}
+        >
+          <Calendar size={16} color="#f97316" />
+          <Text style={styles.todayText}>
+            {logDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.photoSection}>
+          <View style={styles.silhouetteContainer}>
+            <User size={120} color="#d4d4d8" strokeWidth={1} />
+          </View>
+        </View>
+
+        <View style={styles.wheelSelectorSection}>
+          <View style={styles.activeWeightBar} />
+          <View style={styles.wheelsContainer}>
+            <View style={{flex: 1, height: 200}}>
+              <ScrollPicker
+                dataSource={weightWholeList}
+                selectedIndex={selWeightWhole - 30}
+                renderItem={(data) => (
+                  <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                )}
+                onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+                wrapperHeight={200}
+                itemHeight={60}
+                wrapperBackground="#fff"
+                highlightColor="transparent"
+              />
+            </View>
+            <Text style={styles.wheelDot}>.</Text>
+            <View style={{flex: 1, height: 200}}>
+              <ScrollPicker
+                dataSource={weightFractionList}
+                selectedIndex={selWeightFraction}
+                renderItem={(data) => (
+                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                )}
+                onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+                wrapperHeight={200}
+                itemHeight={60}
+                wrapperBackground="#fff"
+                highlightColor="transparent"
+              />
+            </View>
+            <Text style={styles.wheelUnitLarge}>kg</Text>
+          </View>
+        </View>
+
+        <View style={styles.weightLogFooter}>
+          <TouchableOpacity style={styles.saveWeightBtn} onPress={saveWeightEdit}>
+            <Text style={styles.saveWeightText}>Update Weight</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+
+      const renderWeightMenu = () => (
+        <Modal visible={showWeightMenu} animationType="fade" transparent>
+          <View style={styles.fastModalOverlay}>
+            <View style={styles.weightMenuSheet}>
+              <TouchableOpacity style={styles.menuOption} onPress={() => { setShowWeightMenu(false); setShowWeightModal(true); }}>
+                <Text style={styles.menuOptionText}>Log Weight</Text>
+              </TouchableOpacity>
+              <View style={styles.menuSeparator} />
+              <TouchableOpacity style={styles.menuOption} onPress={() => { 
+                setShowWeightMenu(false); 
+                const [whole, fraction] = weightGoal.toString().split('.');
+                setSelWeightWhole(parseInt(whole));
+                setSelWeightFraction(parseInt(fraction || '0'));
+                setShowEditGoalModal(true); 
+              }}>
+                <Text style={styles.menuOptionText}>Edit Goal</Text>
+              </TouchableOpacity>
+              <View style={styles.menuSeparator} />
+              <TouchableOpacity style={styles.menuOption} onPress={() => setShowWeightMenu(false)}>
+                <Text style={[styles.menuOptionText, {color: '#3b82f6'}]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      );
+    
+        const renderEditGoalModal = () => (
+    
+          <Modal visible={showEditGoalModal} animationType="slide" presentationStyle="fullScreen">
+    
+            <SafeAreaView style={styles.weightLogContainer}>
+    
+              <View style={styles.weightLogHeader}>
+    
+                <View style={{width: 40}} />
+    
+                <Text style={styles.weightLogTitle}>Weight Goal</Text>
+    
+                <TouchableOpacity style={styles.weightLogClose} onPress={() => setShowEditGoalModal(false)}>
+    
+                  <X size={20} color="#000" />
+    
+                </TouchableOpacity>
+    
+              </View>
+    
+      
+    
+              <View style={styles.wheelSelectorSection}>
+    
+                <View style={styles.activeWeightBar} />
+    
+                <View style={styles.wheelsContainer}>
+    
+                  <View style={{flex: 1, height: 200}}>
+    
+                    <ScrollPicker
+    
+                      dataSource={weightWholeList}
+    
+                      selectedIndex={selWeightWhole - 30}
+    
+                      renderItem={(data) => <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>}
+    
+                      onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+    
+                      wrapperHeight={200} itemHeight={60} wrapperBackground="#fff" highlightColor="transparent"
+    
+                    />
+    
+                  </View>
+    
+                  <Text style={styles.wheelDot}>.</Text>
+    
+                  <View style={{flex: 1, height: 200}}>
+    
+                    <ScrollPicker
+    
+                      dataSource={weightFractionList}
+    
+                      selectedIndex={selWeightFraction}
+    
+                      renderItem={(data) => <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>}
+    
+                      onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+    
+                      wrapperHeight={200} itemHeight={60} wrapperBackground="#fff" highlightColor="transparent"
+    
+                    />
+    
+                  </View>
+    
+                  <Text style={styles.wheelUnitLarge}>kg</Text>
+    
+                </View>
+    
+              </View>
+    
+      
+    
+              <View style={styles.weightLogFooter}>
+    
+                <TouchableOpacity style={styles.saveWeightBtn} onPress={() => { 
+    
+                  const newGoal = parseFloat(`${selWeightWhole}.${selWeightFraction}`);
+    
+                  setWeightGoal(newGoal); 
+    
+                  const currentWeight = weightHistory[weightHistory.length - 1]?.weight || userProfile.weight;
+    
+                  const targets = calculateDynamicTargets(currentWeight, newGoal);
+    
+                  setUserProfile(prev => ({ ...prev, ...targets }));
+    
+                  setShowEditGoalModal(false); 
+    
+                  Vibration.vibrate(20); 
+    
+                }}>
+    
+                  <Text style={styles.saveWeightText}>Save Goal</Text>
+    
+                </TouchableOpacity>
+    
+              </View>
+    
+            </SafeAreaView>
+    
+          </Modal>
+    
+        );  const renderLogWeightModal = () => (
+    <Modal visible={showWeightModal} animationType="slide" presentationStyle="fullScreen">
+      <SafeAreaView style={styles.weightLogContainer}>
+        <View style={styles.weightLogHeader}>
+          <View style={{width: 40}} />
+          <Text style={styles.weightLogTitle}>Weight Tracker</Text>
+          <TouchableOpacity style={styles.weightLogClose} onPress={() => setShowWeightModal(false)}>
+            <X size={20} color="#000" />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.todayLabelRow} 
+          onPress={() => { setPickerOwner('weight'); setShowPicker(true); setPickerMode('date'); }}
+        >
+          <Calendar size={16} color="#f97316" />
+          <Text style={styles.todayText}>
+            {logDate.toDateString() === new Date().toDateString() ? 'Today' : logDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.photoSection}>
+          <View style={styles.silhouetteContainer}>
+            {weightPhoto ? (
+              <Image source={{ uri: weightPhoto }} style={styles.silhouetteImg} />
+            ) : (
+              <User size={120} color="#d4d4d8" strokeWidth={1} />
             )}
           </View>
-          <TouchableOpacity style={styles.continueFastBtn} onPress={() => { const d = new Date(dateList[selDateIdx].value); d.setHours(selHour, selMin); startFasting(d); setShowPicker(false); }}><Text style={styles.continueFastText}>Confirm & Start Fast</Text></TouchableOpacity>
-        </View></View>
+          <TouchableOpacity 
+            style={styles.addPhotoPill} 
+            onPress={async () => {
+              let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: "images", allowsEditing: true, aspect: [1, 1], quality: 0.5 } as any);
+              if (!result.canceled) setWeightPhoto(result.assets[0].uri);
+            }}
+          >
+            <Text style={styles.addPhotoText}>Add Photo</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.wheelSelectorSection}>
+          <View style={styles.activeWeightBar} />
+          <View style={styles.wheelsContainer}>
+            <View style={{flex: 1, height: 200}}>
+              <ScrollPicker
+                dataSource={weightWholeList}
+                selectedIndex={selWeightWhole - 30}
+                renderItem={(data) => (
+                  <Text style={[styles.wheelText, selWeightWhole === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                )}
+                onValueChange={(data) => setSelWeightWhole(parseInt(data))}
+                wrapperHeight={200}
+                itemHeight={60}
+                wrapperBackground="#fff"
+                highlightColor="transparent"
+              />
+            </View>
+            <Text style={styles.wheelDot}>.</Text>
+            <View style={{flex: 1, height: 200}}>
+              <ScrollPicker
+                dataSource={weightFractionList}
+                selectedIndex={selWeightFraction}
+                renderItem={(data) => (
+                  <Text style={[styles.wheelText, selWeightFraction === parseInt(data) && styles.wheelTextActive]}>{data}</Text>
+                )}
+                onValueChange={(data) => setSelWeightFraction(parseInt(data))}
+                wrapperHeight={200}
+                itemHeight={60}
+                wrapperBackground="#fff"
+                highlightColor="transparent"
+              />
+            </View>
+            <Text style={styles.wheelUnitLarge}>kg</Text>
+          </View>
+        </View>
+
+        <View style={styles.weightLogFooter}>
+          <TouchableOpacity style={styles.saveWeightBtn} onPress={submitWeight}>
+            <Text style={styles.saveWeightText}>
+              {weightPhoto ? "Save" : "Save without Photo"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     </Modal>
   );
 
@@ -558,6 +1092,10 @@ export default function App() {
         <Modal visible={showFastingPlan} animationType="slide" presentationStyle="pageSheet">{renderFastingPlanModal()}</Modal>
         <Modal visible={showFastStartModal} transparent animationType="fade">{renderFastStartModal()}</Modal>
         <Modal visible={showEndFastModal} transparent animationType="fade">{renderEndFastModal()}</Modal>
+        {renderWeightMenu()}
+        {renderEditGoalModal()}
+        {renderEditWeightModal()}
+        {renderLogWeightModal()}
         {renderEditModal()}
         {renderPickerModal()}
       </SafeAreaView>
@@ -646,7 +1184,7 @@ const styles = StyleSheet.create({
   fastProgressBg: { height: 24, backgroundColor: '#f4f4f5', borderRadius: 12, overflow: 'hidden' },
   fastProgressFill: { height: '100%' },
   startFastBtn: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 30 },
-  weightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 20 },
+  weightHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 20, zIndex: 100 },
   weightTitle: { fontSize: 32, fontWeight: 'bold', color: '#000' },
   summaryCard: { marginHorizontal: 24, backgroundColor: '#18181b', borderRadius: 24, padding: 24 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
@@ -768,4 +1306,29 @@ const styles = StyleSheet.create({
   planDesc: { color: '#71717a', fontSize: 12, marginBottom: 12 },
   planToggle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#d4d4d8', alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'center' },
   planToggleActive: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#4ade80', alignSelf: 'flex-end', alignItems: 'center', justifyContent: 'center' },
+  weightLogContainer: { flex: 1, backgroundColor: '#fff' },
+  weightLogHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 },
+  weightLogTitle: { fontSize: 18, fontWeight: 'bold', color: '#000' },
+  weightLogClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f4f4f5', alignItems: 'center', justifyContent: 'center' },
+  todayLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
+  todayText: { fontSize: 14, color: '#f97316', fontWeight: '600' },
+  photoSection: { alignItems: 'center', marginTop: 40, position: 'relative' },
+  silhouetteContainer: { width: 200, height: 200, backgroundColor: '#f4f4f5', borderRadius: 24, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  silhouetteImg: { width: '100%', height: '100%' },
+  addPhotoPill: { position: 'absolute', bottom: -20, backgroundColor: '#000', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 25, elevation: 4 },
+  addPhotoText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  wheelSelectorSection: { marginTop: 80, height: 200, position: 'relative', justifyContent: 'center' },
+  activeWeightBar: { position: 'absolute', left: 24, right: 24, height: 60, backgroundColor: '#f4f4f5', borderRadius: 16, zIndex: -1 },
+  wheelsContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40 },
+  wheelText: { fontSize: 32, fontWeight: 'bold', color: '#d4d4d8' },
+  wheelTextActive: { color: '#000', fontSize: 40 },
+  wheelDot: { fontSize: 40, fontWeight: 'bold', color: '#000', marginHorizontal: 10 },
+  wheelUnitLarge: { fontSize: 24, fontWeight: 'bold', color: '#000', marginLeft: 10, marginTop: 10 },
+  weightLogFooter: { position: 'absolute', bottom: 40, left: 24, right: 24 },
+  saveWeightBtn: { backgroundColor: '#000', paddingVertical: 18, borderRadius: 20, alignItems: 'center' },
+  saveWeightText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  weightMenuSheet: { width: '85%', backgroundColor: '#fff', borderRadius: 24, paddingVertical: 10, overflow: 'hidden' },
+  menuOption: { paddingVertical: 20, alignItems: 'center', width: '100%' },
+  menuOptionText: { fontSize: 18, color: '#000', fontWeight: '500' },
+  menuSeparator: { height: 1, backgroundColor: '#f4f4f5', width: '100%' },
 });

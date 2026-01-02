@@ -6,6 +6,7 @@
     "start": "expo start",
     "start:staging": "APP_ENV=staging expo start",
     "start:prod": "APP_ENV=production expo start",
+    "deploy:staging": "git add . && git commit -m 'Auto-deploy' && eas update --branch staging --message 'Local automated update'",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web"
@@ -18,6 +19,7 @@
     "expo-file-system": "^19.0.21",
     "expo-image-picker": "^17.0.10",
     "expo-status-bar": "~3.0.9",
+    "expo-updates": "~29.0.15",
     "lucide-react-native": "^0.562.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
