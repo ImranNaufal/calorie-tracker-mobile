@@ -3,13 +3,23 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Image, ActivityIn
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Pedometer } from 'expo-sensors';
 const FileSystem = require('expo-file-system/legacy');
 import { StatusBar } from 'expo-status-bar';
+import { db } from './lib/firebase';
+import { collection, addDoc, query, orderBy, onSnapshot, where, getDocs } from "firebase/firestore";
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ScrollPicker from 'react-native-wheel-scrollview-picker';
 import LineChart from 'react-native-chart-kit/dist/line-chart/LineChart';
 import { Plus, Activity, Zap, Droplets, Camera, Flame, Home, User, ScanLine, ChevronRight, Settings, Target, Ruler, Weight, PawPrint, Utensils, Heart, Scale, Scan, X, Crown, Clover, Rabbit, Rat, Carrot, Info, Apple, Image as ImageIcon, Barcode, Mic, Wheat, Beef, Trash2, Save, ChevronLeft, Citrus, Egg, Nut, Circle, MoreVertical, ArrowRight, Calendar } from 'lucide-react-native';
-import { GEMINI_API_KEY } from '@env';
+// ==========================================
+// 🔑 CONFIGURATION: FORCED KEY
+// ==========================================
+const FORCED_GEMINI_KEY = "AIzaSyBCJwnhvTqaB2IuAD6ziXb_wGH27Zdryvs"; 
+// ==========================================
+
+import { GEMINI_API_KEY as ENV_KEY } from '@env';
+const GEMINI_API_KEY = FORCED_GEMINI_KEY || ENV_KEY;
 interface Meal {
   id: string;
   name: string;
@@ -148,7 +158,7 @@ export default function App() {
         const weightWholeList = Array.from({ length: 200 }, (_, i) => (i + 30).toString());
         const weightFractionList = Array.from({ length: 10 }, (_, i) => i.toString());
     
-        const submitWeight = () => {
+        const submitWeight = async () => {
           const val = parseFloat(`${selWeightWhole}.${selWeightFraction}`);
           if (!val) return;
           
@@ -157,23 +167,52 @@ export default function App() {
           const changeStr = diff === 0 ? '' : (diff > 0 ? `+${diff.toFixed(1)}` : `${diff.toFixed(1)}`);
     
           const newEntry = {
-            id: Date.now().toString(),
             weight: val,
             date: logDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short' }),
+            timestamp: Date.now(),
             change: changeStr
           };
     
+          await addDoc(collection(db, "weightHistory"), newEntry);
+          
+          // Also update profile local weight for immediate UI feedback (though snapshot will handle it)
           const targets = calculateDynamicTargets(val, weightGoal);
-          setWeightHistory(prev => [...prev, newEntry]);
-          setUserProfile(prev => ({ ...prev, weight: val, ...targets }));
+          await addDoc(collection(db, "userSettings"), { 
+            type: 'profile', 
+            profile: { ...userProfile, weight: val, ...targets },
+            updatedAt: Date.now()
+          });
+
           setShowWeightModal(false);
           setLogDate(new Date());
-              Vibration.vibrate(50);
-            };
+          Vibration.vibrate(50);
+        };
           
             // Character / Common
-            const [selectedChar, setSelectedChar] = useState('quacky');
-            const [scanMode, setScanMode] = useState<'describe' | 'photo' | 'manual'>('photo');  const [userProfile, setUserProfile] = useState({ calories: 2155, protein: 180, weight: 75, height: 180 });
+  const [selectedChar, setSelectedChar] = useState('quacky');
+  const [scanMode, setScanMode] = useState<'describe' | 'photo' | 'manual'>('photo');
+  
+  // --- WELLNESS STATE ---
+  const [waterLogs, setWaterLogs] = useState<{ dateLabel: string, amount: number }[]>([]);
+  const [waterGoal] = useState(2500);
+  const [stepsLogs, setStepsLogs] = useState<{ dateLabel: string, count: number }[]>([]);
+  const [stepsGoal] = useState(10000);
+  const [activityLogs, setActivityLogs] = useState<{ dateLabel: string, calories: number }[]>([]);
+  const [isPedometerAvailable, setIsPedometerAvailable] = useState('checking');
+  const [healthConnectEnabled, setHealthConnectEnabled] = useState(false);
+  const [showAddWater, setShowAddWater] = useState(false);
+  const [showStepTracker, setShowStepTracker] = useState(false);
+  const [showActivityList, setShowActivityList] = useState(false);
+  const [showLogDuration, setShowLogDuration] = useState(false);
+  const [showTipDetail, setShowTipDetail] = useState(false);
+  const [selectedTip, setSelectedTip] = useState<any>(null);
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [selWaterVolume, setSelWaterVolume] = useState(250);
+  const [selDurationHour, setSelDurationHour] = useState(0);
+  const [selDurationMin, setSelDurationMin] = useState(30);
+  const [activityDescription, setActivityDescription] = useState("");
+
+  const [userProfile, setUserProfile] = useState({ calories: 2155, protein: 180, weight: 75, height: 180 });
   const [describeText, setDescribeText] = useState('');
   const [manualData, setManualData] = useState({ calories: '', protein: '', carbs: '', fat: '', name: '' });
 
@@ -207,6 +246,113 @@ export default function App() {
   // --- EFFECTS ---
   useEffect(() => { startBreathing(); startBlinking(); startFabBounce(); startWaving(); }, []);
 
+  // --- FIREBASE SYNC EFFECT ---
+  useEffect(() => {
+    // 1. Sync Meals
+    const qMeals = query(collection(db, "meals"), orderBy("id", "desc"));
+    const unsubMeals = onSnapshot(qMeals, (snapshot) => {
+      const loadedMeals = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Meal));
+      if (loadedMeals.length > 0) setMeals(loadedMeals);
+    });
+
+    // 2. Sync Water Logs
+    const qWater = query(collection(db, "waterLogs"));
+    const unsubWater = onSnapshot(qWater, (snapshot) => {
+      const logs = snapshot.docs.map(doc => doc.data() as { dateLabel: string, amount: number });
+      setWaterLogs(logs);
+    });
+
+    // 3. Sync Activity Logs
+    const qActivity = query(collection(db, "activityLogs"));
+    const unsubActivity = onSnapshot(qActivity, (snapshot) => {
+      const logs = snapshot.docs.map(doc => doc.data() as { dateLabel: string, calories: number });
+      setActivityLogs(logs);
+    });
+
+    // 4. Sync Weight History
+    const qWeight = query(collection(db, "weightHistory"), orderBy("timestamp", "asc"));
+    const unsubWeight = onSnapshot(qWeight, (snapshot) => {
+      const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+      if (history.length > 0) setWeightHistory(history);
+    });
+
+    // 5. Sync User Settings (Fasting, Weight Goal, Profile)
+    const qSettings = query(collection(db, "userSettings"), orderBy("updatedAt", "asc"));
+    const unsubSettings = onSnapshot(qSettings, (snapshot) => {
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.type === 'fasting') {
+          setIsFasting(data.isFasting);
+          if (data.startTime) setFastStartTime(new Date(data.startTime));
+        }
+        if (data.type === 'weightGoal') {
+          setWeightGoal(data.value);
+        }
+        if (data.type === 'profile') {
+          setUserProfile(data.profile);
+        }
+      });
+    });
+
+    return () => {
+      unsubMeals();
+      unsubWater();
+      unsubActivity();
+      unsubWeight();
+      unsubSettings();
+    };
+  }, []);
+
+  // --- STEP TRACKING EFFECT ---
+  useEffect(() => {
+    let subscription: any = null;
+
+    const subscribe = async () => {
+      const isAvailable = await Pedometer.isAvailableAsync();
+      setIsPedometerAvailable(String(isAvailable));
+
+      if (isAvailable) {
+        // Initial check: Android doesn't support getStepCountAsync for ranges easily
+        // We will rely on watchStepCount for live tracking and 
+        // maybe later implement a more complex native module for history.
+        if (Platform.OS === 'ios') {
+          const start = new Date();
+          start.setHours(0, 0, 0, 0);
+          const end = new Date();
+          
+          try {
+            const result = await Pedometer.getStepCountAsync(start, end);
+            if (result) {
+              setStepsLogs(prev => {
+                const others = prev.filter(l => l.dateLabel !== currentDayLabel);
+                return [...others, { dateLabel: currentDayLabel, count: result.steps }];
+              });
+            }
+          } catch (e) {
+            console.log("Pedometer query error:", e);
+          }
+        }
+
+        // Subscribe to live updates (Supported on both Android & iOS)
+        subscription = Pedometer.watchStepCount(result => {
+          setStepsLogs(prev => {
+            const todayLog = prev.find(l => l.dateLabel === currentDayLabel);
+            const others = prev.filter(l => l.dateLabel !== currentDayLabel);
+            // On Android, watchStepCount gives steps since the subscription started
+            // We increment the current state to reflect real-time movement
+            return [...others, { dateLabel: currentDayLabel, count: (todayLog?.count || 0) + result.steps }];
+          });
+        });
+      }
+    };
+
+    subscribe();
+    return () => subscription && subscription.remove();
+  }, [currentDayLabel]);
+
   const startFabBounce = () => { Animated.loop(Animated.sequence([Animated.delay(2500), Animated.timing(fabAnim, { toValue: 1.1, duration: 200, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1, duration: 200, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1.05, duration: 150, useNativeDriver: true }), Animated.timing(fabAnim, { toValue: 1, duration: 150, useNativeDriver: true })])).start(); };
   const startBreathing = () => { Animated.loop(Animated.sequence([Animated.timing(floatAnim, { toValue: 1, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }), Animated.timing(floatAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true })])).start(); };
   const startBlinking = () => { const blink = Animated.sequence([Animated.timing(blinkAnim, { toValue: 0.1, duration: 100, useNativeDriver: true }), Animated.timing(blinkAnim, { toValue: 1, duration: 100, useNativeDriver: true })]); const loopBlink = () => { setTimeout(() => { blink.start(() => loopBlink()); }, Math.random() * 3000 + 2000); }; loopBlink(); };
@@ -235,7 +381,19 @@ export default function App() {
   }, [plan.eating, plan.fasting, isFasting, fastStartTime]);
 
   // --- LOGIC ---
-  const startFasting = (startTime: Date) => { setFastStartTime(startTime); setIsFasting(true); Vibration.vibrate(50); setShowFastStartModal(false); };
+  const startFasting = async (startTime: Date) => { 
+    setFastStartTime(startTime); 
+    setIsFasting(true); 
+    Vibration.vibrate(50); 
+    setShowFastStartModal(false); 
+    
+    await addDoc(collection(db, "userSettings"), { 
+      type: 'fasting', 
+      isFasting: true, 
+      startTime: startTime.toISOString(),
+      updatedAt: Date.now()
+    });
+  };
   const toggleFast = () => { if (isFasting) { setShowEndFastModal(true); } else { setShowFastStartModal(true); } };
   const handleAddMeal = async () => { setScanMode('photo'); if (!permission?.granted) { const { granted } = await requestPermission(); if (!granted) { Alert.alert("Camera Permission", "Required."); return; } } setShowCamera(true); };
   const takePicture = async () => { if (cameraRef.current) { Vibration.vibrate(10); try { const photo = await cameraRef.current.takePictureAsync({ quality: 0.5, base64: false }); if (photo?.uri) { setShowCamera(false); analyzeFood({ uri: photo.uri }); } } catch (e) { console.error("Camera Error:", e); } } };
@@ -250,12 +408,71 @@ export default function App() {
       if (input.uri) { const base64 = await FileSystem.readAsStringAsync(input.uri, { encoding: 'base64' }); requestBody = { contents: [{ parts: [{ text: "Analyze food image. Return raw JSON: { \"food_name\": \"string\", \"calories\": number, \"macros\": { \"protein\": number, \"carbs\": number, \"fat\": number } }." }, { inline_data: { mime_type: "image/jpeg", data: base64 } }] }] }; } 
       else if (input.text) { requestBody = { contents: [{ parts: [{ text: `Analyze food: "${input.text}". Return raw JSON: { \"food_name\": \"string\", \"calories\": number, \"macros\": { \"protein\": number, \"carbs\": number, \"fat\": number } }.` }] }] }; } 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+      
+      if (!res.ok) {
+        const errorJson = await res.json();
+        throw new Error(errorJson.error?.message || `Error ${res.status}`);
+      }
+
       const json = await res.json();
       const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("AI returned empty response");
+
       const data = JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
-      const newMeal: Meal = { id: Date.now().toString(), name: data.food_name, calories: data.calories, macros: data.macros, image: input.uri || 'https://via.placeholder.com/100', dateLabel: currentDayLabel };
-      setMeals(prev => [newMeal, ...prev]); Vibration.vibrate(50);
-    } catch (e) { Alert.alert("AI Error", "Failed to analyze food."); } finally { setLoading(false); }
+      const newMeal = { name: data.food_name, calories: data.calories, macros: data.macros, image: input.uri || 'https://via.placeholder.com/100', dateLabel: currentDayLabel };
+      
+      await addDoc(collection(db, "meals"), { ...newMeal, id: Date.now().toString() });
+      Vibration.vibrate(50);
+    } catch (e: any) { 
+      console.error("Food Analysis Error:", e);
+      Alert.alert("AI Error", e.message || "Failed to analyze food."); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  const analyzeActivity = async (text: string) => {
+    if (!text.trim()) return;
+    setLoading(true);
+    try {
+      const requestBody = { 
+        contents: [{ 
+          parts: [{ text: `Estimate calories burned for this activity description: "${text}". Consider the duration if mentioned. Return ONLY raw JSON: { "activity_name": "string", "calories_burned": number }.` }] 
+        }] 
+      };
+      
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(requestBody) 
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json();
+        const msg = errorJson.error?.message || `Error ${res.status}`;
+        throw new Error(msg);
+      }
+
+      const json = await res.json();
+      const responseText = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!responseText) {
+        throw new Error("AI returned an empty response. This might be due to safety filters.");
+      }
+
+      const cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const data = JSON.parse(cleanJson);
+      
+      await addDoc(collection(db, "activityLogs"), { dateLabel: selectedDate, calories: data.calories_burned || 0 });
+      setShowActivityList(false);
+      setActivityDescription(""); 
+      Vibration.vibrate(50);
+    } catch (e: any) { 
+      console.error("Activity Analysis Error:", e);
+      Alert.alert("Activity Error", e.message || "Something went wrong."); 
+    } finally {
+      setLoading(false);
+    }
   };
 
   const openEdit = (meal: Meal) => { setEditingMeal({...meal}); setShowEdit(true); };
@@ -421,7 +638,7 @@ export default function App() {
       endLabel = formatTime(new Date(fastStartTime.getTime() + fastingDurationMs));
       progressPct = Math.min(((Date.now() - fastStartTime.getTime()) / fastingDurationMs) * 100, 100);
     }
-    return (
+  return (
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         <View style={styles.topBar}><Text style={styles.greetingText}>Fasting</Text><TouchableOpacity style={styles.planBadge} onPress={() => setShowFastingPlan(true)}><Text style={{fontWeight:'bold'}}>Plan {selectedPlan}</Text></TouchableOpacity></View>
         <View style={{alignItems:'center', marginTop: 40}}>
@@ -488,7 +705,7 @@ export default function App() {
 
     
 
-        return (
+  return (
 
           <View style={{flex: 1, backgroundColor: '#fff'}}>
 
@@ -504,7 +721,7 @@ export default function App() {
 
                           </TouchableOpacity>
 
-                        </View>
+                </View>
 
               <View style={styles.summaryCard}>
 
@@ -514,7 +731,7 @@ export default function App() {
 
                   <View style={{alignItems: 'flex-end'}}><Text style={styles.summaryLabel}>CURRENT WEIGHT</Text><Text style={styles.summaryValueLarge}>{currentWeight} kg</Text></View>
 
-                </View>
+             </View>
 
                 <View style={{marginTop: 20}}><Text style={styles.goalLabel}>{goalProgress}% GOAL REACHED</Text>
 
@@ -522,9 +739,9 @@ export default function App() {
 
                   <View style={styles.progressLabels}><Text style={styles.progressLimit}>{initialWeight} kg</Text><ArrowRight size={14} color="#fff" /><Text style={styles.progressLimit}>{weightGoal} kg</Text></View>
 
-                </View>
+             </View>
 
-              </View>
+          </View>
             <View style={{paddingHorizontal: 24, marginTop: 32}}>
               <Text style={styles.sectionHeaderTitle}>Weight Progress (kg)</Text>
               <View style={styles.segmentedControl}>
@@ -583,7 +800,12 @@ export default function App() {
       <View style={styles.fastModalOverlay}><View style={styles.endFastSheet}><Text style={{fontSize: 40, marginBottom: 16}}>👎</Text><Text style={styles.endFastTitle}>End this fast?</Text>
         <Text style={styles.endFastDesc}>You've only fasted for {elapsed} hours so far. You still have {remaining} hours left to reach your {selectedPlan} goal. If less than 9h, it won't be saved.</Text>
         <TouchableOpacity style={styles.continueFastBtn} onPress={() => setShowEndFastModal(false)}><Text style={styles.continueFastText}>Continue fast</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.cancelFastBtn} onPress={() => { setIsFasting(false); setFastStartTime(null); setShowEndFastModal(false); }}><Text style={styles.cancelFastText}>Cancel this fast</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.cancelFastBtn} onPress={async () => { 
+          setIsFasting(false); 
+          setFastStartTime(null); 
+          setShowEndFastModal(false); 
+          await addDoc(collection(db, "userSettings"), { type: 'fasting', isFasting: false, startTime: null, updatedAt: Date.now() });
+        }}><Text style={styles.cancelFastText}>Cancel this fast</Text></TouchableOpacity>
       </View></View>
     );
   };
@@ -596,14 +818,14 @@ export default function App() {
         <Text style={styles.charName}>{selectedChar === 'quacky' ? 'Quacky' : selectedChar === 'robbin' ? 'Robbin' : 'Bamboo'}</Text>
         <View style={{transform:[{scale: 1.5}], marginVertical: 40}}>{selectedChar === 'quacky' && renderBird()}{selectedChar === 'robbin' && renderRabbit()}{selectedChar === 'bamboo' && renderPanda()}</View>
         <View style={styles.previewData}><Text style={styles.previewNumbers}>2100 / 2100</Text><Text style={styles.previewLabel}>CALORIES EATEN</Text></View>
-      </View>
+          </View>
       <View style={styles.selectorContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal: 24, gap: 12}}>
           <TouchableOpacity style={[styles.charCard, selectedChar==='quacky' && styles.charCardActive]} onPress={()=>setSelectedChar('quacky')}><View style={styles.cardThumb}><View style={[styles.birdBody, {width: 40, height: 40, borderRadius: 20, borderWidth: 2}]}><View style={[styles.beak, {width: 6, height: 6, top: 16, left: 16}]} /></View></View><Text style={styles.cardTitle}>Quacky</Text><Text style={styles.cardSub}>Unlocked</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.charCard, selectedChar==='robbin' && styles.charCardActive]} onPress={()=>setSelectedChar('robbin')}><View style={styles.premiumBadge}><Crown size={10} color="#000" fill="#fbbf24" /></View><View style={styles.cardThumb}><Rabbit size={32} color="#000" /></View><Text style={styles.cardTitle}>Robbin</Text><Text style={styles.cardSubPremium}>Premium</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.charCard, selectedChar==='bamboo' && styles.charCardActive]} onPress={()=>setSelectedChar('bamboo')}><View style={styles.premiumBadge}><Crown size={10} color="#000" fill="#fbbf24" /></View><View style={styles.cardThumb}><Rat size={32} color="#000" /></View><Text style={styles.cardTitle}>Bamboo</Text><Text style={styles.cardSubPremium}>Premium</Text></TouchableOpacity>
         </ScrollView>
-      </View>
+        </View>
     </View>
   );
 
@@ -623,7 +845,7 @@ export default function App() {
 
             <X size={24} color="#000" onPress={() => setShowPicker(false)} />
 
-          </View>
+             </View>
 
           
 
@@ -677,7 +899,7 @@ export default function App() {
 
             )}
 
-          </View>
+                </View>
 
           <TouchableOpacity style={styles.continueFastBtn} onPress={() => { 
 
@@ -716,7 +938,7 @@ export default function App() {
           <TouchableOpacity style={styles.weightLogClose} onPress={() => setShowEditWeightModal(false)}>
             <X size={20} color="#000" />
           </TouchableOpacity>
-        </View>
+              </View>
 
         <TouchableOpacity 
           style={styles.todayLabelRow} 
@@ -731,8 +953,8 @@ export default function App() {
         <View style={styles.photoSection}>
           <View style={styles.silhouetteContainer}>
             <User size={120} color="#d4d4d8" strokeWidth={1} />
-          </View>
-        </View>
+              </View>
+            </View>
 
         <View style={styles.wheelSelectorSection}>
           <View style={styles.activeWeightBar} />
@@ -750,7 +972,7 @@ export default function App() {
                 wrapperBackground="#fff"
                 highlightColor="transparent"
               />
-            </View>
+              </View>
             <Text style={styles.wheelDot}>.</Text>
             <View style={{flex: 1, height: 200}}>
               <ScrollPicker
@@ -881,7 +1103,7 @@ export default function App() {
     
               <View style={styles.weightLogFooter}>
     
-                <TouchableOpacity style={styles.saveWeightBtn} onPress={() => { 
+                <TouchableOpacity style={styles.saveWeightBtn} onPress={async () => { 
     
                   const newGoal = parseFloat(`${selWeightWhole}.${selWeightFraction}`);
     
@@ -891,8 +1113,13 @@ export default function App() {
     
                   const targets = calculateDynamicTargets(currentWeight, newGoal);
     
-                  setUserProfile(prev => ({ ...prev, ...targets }));
-    
+                  await addDoc(collection(db, "userSettings"), { type: 'weightGoal', value: newGoal, updatedAt: Date.now() });
+                  await addDoc(collection(db, "userSettings"), { 
+                    type: 'profile', 
+                    profile: { ...userProfile, ...targets },
+                    updatedAt: Date.now()
+                  });
+
                   setShowEditGoalModal(false); 
     
                   Vibration.vibrate(20); 
@@ -936,8 +1163,8 @@ export default function App() {
               <Image source={{ uri: weightPhoto }} style={styles.silhouetteImg} />
             ) : (
               <User size={120} color="#d4d4d8" strokeWidth={1} />
-            )}
-          </View>
+          )}
+        </View>
           <TouchableOpacity 
             style={styles.addPhotoPill} 
             onPress={async () => {
@@ -1032,11 +1259,11 @@ export default function App() {
           <View style={styles.editInputRow}>
             <Text style={styles.editLabel}>Name</Text>
             <TextInput style={styles.editInput} value={editingMeal?.name} onChangeText={t => setEditingMeal(prev => prev ? {...prev, name: t} : null)} />
-          </View>
+              </View>
           <View style={styles.editInputRow}>
             <Text style={styles.editLabel}>Calories</Text>
             <TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.calories || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, calories: parseInt(t)||0} : null)} />
-          </View>
+            </View>
           <View style={{flexDirection:'row', gap:12}}>
             <View style={{flex:1}}><Text style={styles.editLabel}>Protein</Text><TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.macros.protein || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, macros: {...prev.macros, protein: parseInt(t)||0}} : null)} /></View>
             <View style={{flex:1}}><Text style={styles.editLabel}>Carbs</Text><TextInput style={styles.editInput} keyboardType="numeric" value={String(editingMeal?.macros.carbs || 0)} onChangeText={t => setEditingMeal(prev => prev ? {...prev, macros: {...prev.macros, carbs: parseInt(t)||0}} : null)} /></View>
@@ -1052,6 +1279,320 @@ export default function App() {
     </Modal>
   );
 
+  const renderWellness = () => {
+    const currentWaterIntake = waterLogs
+      .filter(log => log.dateLabel === selectedDate)
+      .reduce((sum, log) => sum + log.amount, 0);
+
+    const currentStepsCount = stepsLogs
+      .filter(log => log.dateLabel === selectedDate)
+      .reduce((sum, log) => sum + log.count, 0);
+
+    const currentActiveCalories = activityLogs
+      .filter(log => log.dateLabel === selectedDate)
+      .reduce((sum, log) => sum + log.calories, 0);
+
+    return (
+      <ScrollView contentContainerStyle={{ paddingBottom: 150 }}>
+        <View style={styles.well_headerContainer}>
+          <Text style={styles.well_headerTitle}>Wellness</Text>
+        </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.well_carouselContainer}>
+        {[
+          { 
+            q: "Should I Skip Breakfast?", 
+            bg: "#FFEDF2", 
+            icon: <Apple size={40} color="#FF8FA3" />,
+            fact: "Breakfast jumpstarts your metabolism and helps you burn more calories throughout the day. Skipping it often leads to overeating later!",
+            motivation: "Fuel your body right from the start. You deserve to feel energetic all day long!",
+            accent: "#FF8FA3"
+          },
+          { 
+            q: "How much water is enough?", 
+            bg: "#E6F4FF", 
+            icon: <Droplets size={40} color="#69C0FF" />,
+            fact: "Drinking enough water can increase the number of calories you burn by 24–30% within 10 minutes of drinking.",
+            motivation: "Stay hydrated, stay sharp! Your brain is 75% water—keep it happy.",
+            accent: "#69C0FF"
+          },
+          { 
+            q: "Benefits of morning walks", 
+            bg: "#F6FFED", 
+            icon: <Activity size={40} color="#95DE64" />,
+            fact: "A 30-minute morning walk can lower your blood pressure, improve blood circulation, and reduce the risk of heart disease.",
+            motivation: "The morning breeze is a gift. Step outside and let the world inspire your first victory of the day!",
+            accent: "#95DE64"
+          },
+          { 
+            q: "Healthy snack options", 
+            bg: "#FFF7E6", 
+            icon: <Utensils size={40} color="#FFC069" />,
+            fact: "Almonds and walnuts are packed with healthy fats and protein, keeping you full for longer than processed snacks.",
+            motivation: "Small choices lead to big changes. Pick the nut, not the donut!",
+            accent: "#FFC069"
+          },
+        ].map((tip, i) => (
+          <TouchableOpacity 
+            key={i} 
+            style={[styles.well_tipCard, { backgroundColor: tip.bg }]}
+            onPress={() => { setSelectedTip(tip); setShowTipDetail(true); }}
+          >
+            <View style={styles.well_tipIcon}>{tip.icon}</View>
+            <Text style={styles.well_tipText}>{tip.q}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+        <View style={styles.well_section}>
+          <Text style={styles.well_sectionTitle}>Today's Health</Text>
+          
+          <TouchableOpacity style={styles.well_waterCard} onPress={() => setShowAddWater(true)}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={styles.well_waterIconBox}><Droplets size={24} color="#3b82f6" /></View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.well_cardLabel}>Water Intake</Text>
+                <Text style={styles.well_cardValue}>{currentWaterIntake} / {waterGoal} ml</Text>
+              </View>
+              <View style={styles.well_plusBtn}><Plus size={20} color="#fff" /></View>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.well_healthConnectBanner}>
+            <Heart size={24} color="#6366f1" fill="#6366f1" />
+            <View style={{ flex: 1, marginHorizontal: 12 }}>
+              <Text style={styles.well_bannerTitle}>Health Connect</Text>
+              <Text style={styles.well_bannerSub}>Sync activity automatically</Text>
+            </View>
+            <TouchableOpacity onPress={() => setHealthConnectEnabled(!healthConnectEnabled)}>
+              <View style={[styles.well_toggle, healthConnectEnabled && styles.well_toggleActive]}>
+                <View style={[styles.well_toggleDot, healthConnectEnabled && styles.well_toggleDotActive]} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.well_metricsGrid}>
+            <TouchableOpacity style={styles.well_metricSquare} onPress={() => setShowStepTracker(true)}>
+              <View style={[styles.well_metricIcon, { backgroundColor: '#F6FFED' }]}><ScanLine size={24} color="#52C41A" /></View>
+              <Text style={styles.well_metricValue}>{currentStepsCount}</Text>
+              <Text style={styles.well_metricLabel}>Steps</Text>
+              <Text style={styles.well_metricGoal}>Goal: {stepsGoal}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.well_metricSquare} onPress={() => setShowActivityList(true)}>
+              <View style={[styles.well_metricIcon, { backgroundColor: '#F9F0FF' }]}><Activity size={24} color="#722ED1" /></View>
+              <Text style={styles.well_metricValue}>{currentActiveCalories} kcal</Text>
+              <Text style={styles.well_metricLabel}>Activity</Text>
+              <View style={styles.well_miniPlus}><Plus size={12} color="#722ED1" /></View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ScrollView>
+    );
+  };
+
+  const renderAddWaterModal = () => (
+    <Modal visible={showAddWater} animationType="slide" transparent>
+      <View style={styles.well_modalOverlay}>
+        <View style={styles.well_modalSheet}>
+          <Text style={styles.well_modalTitle}>Add Water</Text>
+          <Text style={styles.well_modalSub}>Select your drink size to track water intake</Text>
+          
+          <View style={styles.well_pickerContainer}>
+            <View style={styles.well_pickerSelectionBar} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <ScrollPicker
+                dataSource={Array.from({ length: 20 }, (_, i) => (i + 1) * 50)}
+                selectedIndex={4}
+                onValueChange={(data) => setSelWaterVolume(data)}
+                wrapperHeight={150}
+                itemHeight={50}
+                highlightColor="transparent"
+                renderItem={(data, index, isSelected) => (
+                  <Text style={[styles.well_pickerText, isSelected && styles.well_pickerTextActive]}>{data}</Text>
+                )}
+              />
+              <Text style={styles.well_pickerUnit}>ml</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.well_primaryBtn} onPress={async () => { await addDoc(collection(db, "waterLogs"), { dateLabel: selectedDate, amount: selWaterVolume }); setShowAddWater(false); Vibration.vibrate(20); }}>
+            <Text style={styles.well_primaryBtnText}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.well_secondaryBtn} onPress={() => setShowAddWater(false)}>
+            <Text style={styles.well_secondaryBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderStepTrackerModal = () => (
+    <Modal visible={showStepTracker} animationType="slide" transparent>
+      <View style={styles.well_modalOverlay}>
+        <View style={styles.well_modalSheet}>
+          <View style={styles.well_stepIconCircle}><ScanLine size={40} color="#52C41A" /></View>
+          <Text style={styles.well_modalTitle}>Step Tracker</Text>
+          <Text style={styles.well_stepDescText}>We've set an ideal daily step goal for you based on your profile and goals</Text>
+          
+          <View style={styles.well_stepGoalBox}>
+            <Text style={styles.well_stepGoalLabel}>Daily Goal</Text>
+            <Text style={styles.well_stepGoalValue}>{stepsGoal.toLocaleString()}</Text>
+          </View>
+
+          <TouchableOpacity style={styles.well_primaryBtnPill} onPress={() => setShowStepTracker(false)}>
+            <Text style={styles.well_primaryBtnText}>Got It</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderActivityList = () => (
+    <Modal visible={showActivityList} animationType="slide">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+        <View style={styles.well_activityHeader}>
+          <Text style={styles.well_activityHeaderTitle}>Activity Tracker</Text>
+          <TouchableOpacity onPress={() => setShowActivityList(false)}><X size={24} color="#000" /></TouchableOpacity>
+        </View>
+
+        <View style={styles.well_activityInputSection}>
+          <Text style={styles.well_activityPrompt}>Describe the Type of Exercise and the duration</Text>
+          <TextInput 
+            style={styles.well_activityInput} 
+            placeholder="Examples: 45 min cycling" 
+            placeholderTextColor="#bfbfbf"
+            multiline
+            value={activityDescription}
+            onChangeText={setActivityDescription}
+          />
+          <TouchableOpacity 
+            style={[styles.well_addActivityBtn, !activityDescription.trim() && { opacity: 0.5 }]} 
+            onPress={() => analyzeActivity(activityDescription)}
+            disabled={!activityDescription.trim() || loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.well_addActivityBtnText}>Add Activity</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.well_activitySeparator}>
+          <Text style={styles.well_activitySeparatorText}>or select from the list</Text>
+        </View>
+
+        <FlatList
+          data={[
+            { name: "Stretching", time: "30 min", cals: 120, icon: <Activity size={20} color="#fff" /> },
+            { name: "Cycling", time: "45 min", cals: 350, icon: <Activity size={20} color="#fff" /> },
+            { name: "Core Training", time: "30 min", cals: 215, icon: <Activity size={20} color="#fff" /> },
+            { name: "Swimming", time: "60 min", cals: 500, icon: <Activity size={20} color="#fff" /> },
+          ]}
+          keyExtractor={(item) => item.name}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.well_activityItem} onPress={() => { setSelectedActivity(item); setShowLogDuration(true); }}>
+              <View style={styles.well_activityIconBox}>{item.icon}</View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.well_activityName}>{item.name}</Text>
+                <Text style={styles.well_activitySub}>{item.time} • {item.cals} kcal</Text>
+              </View>
+              <View style={styles.well_activityPlus}><Plus size={16} color="#000" /></View>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+        />
+      </SafeAreaView>
+    </Modal>
+  );
+
+  const renderLogDurationModal = () => (
+    <Modal visible={showLogDuration} animationType="slide" transparent>
+      <View style={styles.well_modalOverlay}>
+        <View style={styles.well_modalSheet}>
+          <Text style={styles.well_modalTitle}>{selectedActivity?.name || "Activity"}</Text>
+          <Text style={styles.well_modalSub}>Select the duration to log this activity</Text>
+          
+          <View style={styles.well_pickerContainer}>
+            <View style={styles.well_pickerSelectionBar} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <ScrollPicker
+                dataSource={Array.from({ length: 4 }, (_, i) => i)}
+                selectedIndex={selDurationHour}
+                onValueChange={(data) => setSelDurationHour(data)}
+                wrapperHeight={150}
+                itemHeight={50}
+                highlightColor="transparent"
+                renderItem={(data, index, isSelected) => (
+                  <Text style={[styles.well_pickerText, isSelected && styles.well_pickerTextActive]}>{data}</Text>
+                )}
+              />
+              <Text style={styles.well_pickerUnitSmall}>hrs</Text>
+              <ScrollPicker
+                dataSource={Array.from({ length: 12 }, (_, i) => i * 5)}
+                selectedIndex={6}
+                onValueChange={(data) => setSelDurationMin(data)}
+                wrapperHeight={150}
+                itemHeight={50}
+                highlightColor="transparent"
+                renderItem={(data, index, isSelected) => (
+                  <Text style={[styles.well_pickerText, isSelected && styles.well_pickerTextActive]}>{data}</Text>
+                )}
+              />
+              <Text style={styles.well_pickerUnitSmall}>min</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.well_primaryBtn} onPress={async () => { 
+            await addDoc(collection(db, "activityLogs"), { dateLabel: selectedDate, calories: (selectedActivity?.cals || 0) });
+            setShowLogDuration(false); 
+            setShowActivityList(false); 
+            Vibration.vibrate(20); 
+          }}>
+            <Text style={styles.well_primaryBtnText}>Save</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.well_secondaryBtn} onPress={() => setShowLogDuration(false)}>
+            <Text style={styles.well_secondaryBtnText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderTipDetailModal = () => (
+    <Modal visible={showTipDetail} animationType="fade" transparent>
+      <View style={styles.well_tipDetailOverlay}>
+        <Animated.View style={styles.well_tipDetailSheet}>
+          <View style={[styles.well_tipDetailIconCircle, { backgroundColor: selectedTip?.bg || '#fff' }]}>
+            {selectedTip?.icon}
+          </View>
+          
+          <Text style={styles.well_tipDetailTitle}>{selectedTip?.q}</Text>
+          
+          <ScrollView style={styles.well_tipDetailContent}>
+            <View style={styles.well_tipInfoSection}>
+              <Text style={[styles.well_tipInfoLabel, { color: selectedTip?.accent || '#000' }]}>DID YOU KNOW?</Text>
+              <Text style={styles.well_tipInfoText}>{selectedTip?.fact}</Text>
+            </View>
+
+            <View style={styles.well_tipInfoSection}>
+              <Text style={[styles.well_tipInfoLabel, { color: selectedTip?.accent || '#000' }]}>MOTIVATION</Text>
+              <Text style={styles.well_tipInfoText}>{selectedTip?.motivation}</Text>
+        </View>
+      </ScrollView>
+
+          <TouchableOpacity 
+            style={[styles.well_primaryBtnPill, { backgroundColor: selectedTip?.accent || '#000', marginTop: 20 }]} 
+            onPress={() => setShowTipDetail(false)}
+          >
+            <Text style={styles.well_primaryBtnText}>Got it!</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+
   // --- MAIN RENDER ---
   return (
     <SafeAreaProvider>
@@ -1060,6 +1601,7 @@ export default function App() {
         {activeTab === 'home' && renderHome()}
         {activeTab === 'fasting' && renderFasting()}
         {activeTab === 'weight' && renderWeight()}
+        {activeTab === 'wellness' && renderWellness()}
         {activeTab === 'profile' && <View style={{flex:1, alignItems:'center', justifyContent:'center'}}><Text>Profile</Text></View>}
 
         {activeTab === 'home' && (
@@ -1078,13 +1620,13 @@ export default function App() {
         </View>
 
         {activeTab === 'home' && (
-          <View style={styles.fabContainer}>
+      <View style={styles.fabContainer}>
              <Animated.View style={{ transform: [{ scale: fabAnim }] }}>
                <TouchableOpacity style={styles.fabPill} onPress={handleAddMeal} disabled={loading}>
                   {loading ? <ActivityIndicator color="#fff" /> : <><View style={styles.scanIconFrame}><Plus size={16} color="#000" strokeWidth={3} /></View><Text style={styles.fabText}>Add Meal</Text></>}
-               </TouchableOpacity>
+        </TouchableOpacity>
              </Animated.View>
-          </View>
+      </View>
         )}
 
         <Modal visible={showCamera} animationType="slide">{renderAddMealModal()}</Modal>
@@ -1098,7 +1640,12 @@ export default function App() {
         {renderLogWeightModal()}
         {renderEditModal()}
         {renderPickerModal()}
-      </SafeAreaView>
+        {renderAddWaterModal()}
+        {renderStepTrackerModal()}
+        {renderActivityList()}
+        {renderLogDurationModal()}
+        {renderTipDetailModal()}
+    </SafeAreaView>
     </SafeAreaProvider>
   );
 }
@@ -1114,16 +1661,16 @@ function MealItem({ meal, onPress }: { meal: Meal; onPress?: () => void }) {
            <View style={styles.macroIndicatorRow}>
              <View style={[styles.smallMacroBar, {backgroundColor: '#34d399'}]} />
              <Text style={styles.macroText}>{meal.macros.protein}g P</Text>
-           </View>
+      </View>
            <View style={styles.macroIndicatorRow}>
              <View style={[styles.smallMacroBar, {backgroundColor: '#60a5fa'}]} />
              <Text style={styles.macroText}>{meal.macros.carbs}g C</Text>
-           </View>
+      </View>
            <View style={styles.macroIndicatorRow}>
              <View style={[styles.smallMacroBar, {backgroundColor: '#f472b6'}]} />
              <Text style={styles.macroText}>{meal.macros.fat}g F</Text>
-           </View>
-        </View>
+      </View>
+    </View>
       </View>
       <View style={{alignItems:'flex-end'}}><Text style={styles.mealCal}>{meal.calories}</Text><Text style={styles.mealUnit}>kcal</Text></View>
     </TouchableOpacity>
@@ -1331,4 +1878,75 @@ const styles = StyleSheet.create({
   menuOption: { paddingVertical: 20, alignItems: 'center', width: '100%' },
   menuOptionText: { fontSize: 18, color: '#000', fontWeight: '500' },
   menuSeparator: { height: 1, backgroundColor: '#f4f4f5', width: '100%' },
+  
+  // --- WELLNESS STYLES ---
+  well_headerContainer: { paddingHorizontal: 24, paddingTop: 80, paddingBottom: 20 },
+  well_headerTitle: { fontSize: 34, fontWeight: '900', color: '#000', letterSpacing: -0.5 },
+  well_carouselContainer: { paddingLeft: 24, paddingRight: 12, gap: 16, marginBottom: 32 },
+  well_tipCard: { width: 160, height: 160, borderRadius: 24, padding: 20, justifyContent: 'space-between' },
+  well_tipIcon: { width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.5)', alignItems: 'center', justifyContent: 'center' },
+  well_tipText: { fontSize: 16, fontWeight: '700', color: '#000', lineHeight: 20 },
+  well_section: { paddingHorizontal: 24 },
+  well_sectionTitle: { fontSize: 20, fontWeight: '800', color: '#000', marginBottom: 16 },
+  well_waterCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, marginBottom: 16 },
+  well_waterIconBox: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#E6F4FF', alignItems: 'center', justifyContent: 'center' },
+  well_cardLabel: { fontSize: 12, fontWeight: '700', color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 1 },
+  well_cardValue: { fontSize: 24, fontWeight: '900', color: '#000', marginTop: 2 },
+  well_plusBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
+  well_healthConnectBanner: { backgroundColor: '#EEF2FF', borderRadius: 24, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  well_bannerTitle: { fontSize: 16, fontWeight: '800', color: '#000' },
+  well_bannerSub: { fontSize: 12, color: '#6366f1', fontWeight: '600' },
+  well_toggle: { width: 44, height: 24, borderRadius: 22, backgroundColor: '#D1D5DB', padding: 2 },
+  well_toggleActive: { backgroundColor: '#6366f1' },
+  well_toggleDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' },
+  well_toggleDotActive: { transform: [{ translateX: 20 }] },
+  well_metricsGrid: { flexDirection: 'row', gap: 16 },
+  well_metricSquare: { flex: 1, backgroundColor: '#fff', borderRadius: 24, padding: 20, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, alignItems: 'flex-start' },
+  well_metricIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  well_metricValue: { fontSize: 28, fontWeight: '900', color: '#000' },
+  well_metricLabel: { fontSize: 14, fontWeight: '700', color: '#8c8c8c' },
+  well_metricGoal: { fontSize: 10, fontWeight: '600', color: '#bfbfbf', marginTop: 4 },
+  well_miniPlus: { position: 'absolute', top: 20, right: 20, width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: '#f0f0f0', alignItems: 'center', justifyContent: 'center' },
+  well_modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  well_modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 32, paddingBottom: 50, alignItems: 'center' },
+  well_modalTitle: { fontSize: 24, fontWeight: '900', color: '#000', marginBottom: 8 },
+  well_modalSub: { fontSize: 14, color: '#8c8c8c', fontWeight: '600', textAlign: 'center', marginBottom: 32 },
+  well_pickerContainer: { width: '100%', height: 150, position: 'relative', justifyContent: 'center', marginBottom: 40 },
+  well_pickerSelectionBar: { position: 'absolute', left: 0, right: 0, height: 50, backgroundColor: '#f5f5f5', borderRadius: 12, zIndex: -1 },
+  well_pickerText: { fontSize: 24, fontWeight: '600', color: '#d9d9d9' },
+  well_pickerTextActive: { color: '#000', fontSize: 32, fontWeight: '900' },
+  well_pickerUnit: { fontSize: 20, fontWeight: '900', color: '#000', marginLeft: 10, marginTop: 4 },
+  well_pickerUnitSmall: { fontSize: 14, fontWeight: '700', color: '#8c8c8c', marginHorizontal: 8 },
+  well_primaryBtn: { width: '100%', height: 64, backgroundColor: '#000', borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  well_primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
+  well_secondaryBtn: { width: '100%', height: 64, backgroundColor: '#f5f5f5', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  well_secondaryBtnText: { color: '#000', fontSize: 18, fontWeight: '700' },
+  well_stepIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F6FFED', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  well_stepDescText: { fontSize: 16, color: '#595959', textAlign: 'center', lineHeight: 24, marginBottom: 32 },
+  well_stepGoalBox: { alignItems: 'center', marginBottom: 40 },
+  well_stepGoalLabel: { fontSize: 12, fontWeight: '800', color: '#8c8c8c', textTransform: 'uppercase', letterSpacing: 1 },
+  well_stepGoalValue: { fontSize: 56, fontWeight: '900', color: '#000', marginTop: 4 },
+  well_primaryBtnPill: { width: '100%', height: 60, backgroundColor: '#000', borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
+  well_activityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  well_activityHeaderTitle: { fontSize: 20, fontWeight: '900', color: '#000' },
+  well_activityInputSection: { padding: 24 },
+  well_activityPrompt: { fontSize: 14, fontWeight: '700', color: '#000', marginBottom: 16 },
+  well_activityInput: { backgroundColor: '#f5f5f5', borderRadius: 16, padding: 20, fontSize: 16, height: 100, textAlignVertical: 'top', color: '#000', marginBottom: 16 },
+  well_addActivityBtn: { backgroundColor: '#000', borderRadius: 16, height: 56, alignItems: 'center', justifyContent: 'center' },
+  well_addActivityBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  well_activitySeparator: { paddingHorizontal: 24, marginBottom: 24 },
+  well_activitySeparatorText: { fontSize: 14, fontWeight: '700', color: '#bfbfbf' },
+  well_activityItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, backgroundColor: '#fff', borderRadius: 20, padding: 12, borderWidth: 1, borderColor: '#f0f0f0' },
+  well_activityIconBox: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#52C41A', alignItems: 'center', justifyContent: 'center' },
+  well_activityName: { fontSize: 16, fontWeight: '800', color: '#000' },
+  well_activitySub: { fontSize: 12, color: '#8c8c8c', fontWeight: '600', marginTop: 2 },
+  well_activityPlus: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#f5f5f5', alignItems: 'center', justifyContent: 'center' },
+  well_tipDetailOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  well_tipDetailSheet: { width: '100%', backgroundColor: '#fff', borderRadius: 32, padding: 32, alignItems: 'center', elevation: 10 },
+  well_tipDetailIconCircle: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  well_tipDetailTitle: { fontSize: 26, fontWeight: '900', color: '#000', textAlign: 'center', marginBottom: 24 },
+  well_tipDetailContent: { width: '100%', maxHeight: 300 },
+  well_tipInfoSection: { marginBottom: 24, width: '100%' },
+  well_tipInfoLabel: { fontSize: 12, fontWeight: '900', letterSpacing: 1.5, marginBottom: 8 },
+  well_tipInfoText: { fontSize: 16, color: '#434343', lineHeight: 24, fontWeight: '500' },
 });
